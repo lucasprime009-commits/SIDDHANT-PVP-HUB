@@ -1,0 +1,3197 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local VirtualUser = game:GetService("VirtualUser")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+
+-- Theme Presets
+local THEMES = {
+	{ name = "Sky Blue", primary = Color3.fromRGB(59, 130, 246), bright = Color3.fromRGB(147, 197, 253) },
+	{ name = "Emerald", primary = Color3.fromRGB(16, 185, 129), bright = Color3.fromRGB(110, 231, 183) },
+	{ name = "Crimson", primary = Color3.fromRGB(239, 68, 68), bright = Color3.fromRGB(252, 165, 165) },
+	{ name = "Gold", primary = Color3.fromRGB(245, 158, 11), bright = Color3.fromRGB(253, 224, 71) },
+}
+
+-- Selectable Blox Fruits Combo Presets (supports variable `hold` time for charged skills)
+local COMBO_PRESETS = {
+	{
+		name = "Meta All-In",
+		steps = {
+			{ category = "Melee", key = Enum.KeyCode.C, hold = 0.12, delay = 0.36 },
+			{ category = "Melee", key = Enum.KeyCode.Z, hold = 0.05, delay = 0.34 },
+			{ category = "Blox Fruit", key = Enum.KeyCode.X, hold = 0.08, delay = 0.38 },
+			{ category = "Blox Fruit", key = Enum.KeyCode.C, hold = 0.25, delay = 0.40 },
+			{ category = "Sword", key = Enum.KeyCode.Z, hold = 0.06, delay = 0.34 },
+			{ category = "Sword", key = Enum.KeyCode.X, hold = 0.08, delay = 0.36 },
+			{ category = "Melee", key = Enum.KeyCode.X, hold = 0.05, delay = 0.34 },
+			{ category = "Gun", key = Enum.KeyCode.Z, hold = 0.04, delay = 0.28 },
+		},
+	},
+	{
+		name = "Fruit Spam",
+		steps = {
+			{ category = "Blox Fruit", key = Enum.KeyCode.V, hold = 0.45, delay = 0.42 },
+			{ category = "Blox Fruit", key = Enum.KeyCode.C, hold = 0.22, delay = 0.38 },
+			{ category = "Blox Fruit", key = Enum.KeyCode.X, hold = 0.08, delay = 0.36 },
+			{ category = "Blox Fruit", key = Enum.KeyCode.Z, hold = 0.05, delay = 0.34 },
+			{ category = "Melee", key = Enum.KeyCode.C, hold = 0.10, delay = 0.34 },
+		},
+	},
+	{
+		name = "Sword Rush",
+		steps = {
+			{ category = "Melee", key = Enum.KeyCode.C, hold = 0.10, delay = 0.34 },
+			{ category = "Sword", key = Enum.KeyCode.Z, hold = 0.06, delay = 0.32 },
+			{ category = "Sword", key = Enum.KeyCode.X, hold = 0.12, delay = 0.36 },
+			{ category = "Gun", key = Enum.KeyCode.Z, hold = 0.04, delay = 0.28 },
+			{ category = "Melee", key = Enum.KeyCode.Z, hold = 0.05, delay = 0.34 },
+			{ category = "Melee", key = Enum.KeyCode.X, hold = 0.05, delay = 0.34 },
+		},
+	},
+}
+
+-- Default Values
+local DEFAULTS = {
+	ToggleKey = Enum.KeyCode.F,
+	DashKey = Enum.KeyCode.Q,
+	BrakeKey = Enum.KeyCode.X,
+	AscendKey = Enum.KeyCode.Space,
+	DescendKey = Enum.KeyCode.LeftControl,
+	AimToggleKey = Enum.KeyCode.E,
+	ComboKey = Enum.KeyCode.R,
+
+	FlySpeed = 65,
+	SprintMultiplier = 1.75,
+	NoclipEnabled = false,
+	WalkOnWaterEnabled = true,
+	AntiKnockbackEnabled = true,
+	InfiniteAirJumpEnabled = true,
+	AntiAFKEnabled = true,
+	OrbitTargetEnabled = false,
+	TapToLockEnabled = true,
+	AutoAuraEnabled = true,
+	AutoKenEnabled = false,
+	AutoEscapeEnabled = false,
+	ESPEnabled = true,
+	ActionBarExpanded = true,
+	ActiveTab = "Combat", -- "Combat" | "Movement" | "Visuals"
+	ComboPresetIndex = 1,
+
+	EscapeHPPercent = 28,
+	AimFOVRadius = 160,
+	TargetPartName = "Head", -- "Head" or "HumanoidRootPart"
+	ThemeIndex = 3, -- Crimson default for PvP
+
+	LogoPosition = UDim2.new(0, 24, 0.36, 0),
+	MenuPosition = UDim2.new(1, -300, 0, 148),
+	ActionBarPosition = UDim2.new(1, -490, 0.72, 0),
+}
+
+-- Session Persistence Store
+local sessionEnv = (typeof(getgenv) == "function" and getgenv()) or _G
+if not sessionEnv._SiddhantPvPHubState then
+	sessionEnv._SiddhantPvPHubState = {
+		ToggleKey = DEFAULTS.ToggleKey,
+		FlySpeed = DEFAULTS.FlySpeed,
+		SprintMultiplier = DEFAULTS.SprintMultiplier,
+		NoclipEnabled = DEFAULTS.NoclipEnabled,
+		WalkOnWaterEnabled = DEFAULTS.WalkOnWaterEnabled,
+		AntiKnockbackEnabled = DEFAULTS.AntiKnockbackEnabled,
+		InfiniteAirJumpEnabled = DEFAULTS.InfiniteAirJumpEnabled,
+		AntiAFKEnabled = DEFAULTS.AntiAFKEnabled,
+		OrbitTargetEnabled = DEFAULTS.OrbitTargetEnabled,
+		TapToLockEnabled = DEFAULTS.TapToLockEnabled,
+		AutoAuraEnabled = DEFAULTS.AutoAuraEnabled,
+		AutoKenEnabled = DEFAULTS.AutoKenEnabled,
+		AutoEscapeEnabled = DEFAULTS.AutoEscapeEnabled,
+		ESPEnabled = DEFAULTS.ESPEnabled,
+		ActionBarExpanded = DEFAULTS.ActionBarExpanded,
+		ActiveTab = DEFAULTS.ActiveTab,
+		ComboPresetIndex = DEFAULTS.ComboPresetIndex,
+		AimFOVRadius = DEFAULTS.AimFOVRadius,
+		TargetPartName = DEFAULTS.TargetPartName,
+		ThemeIndex = DEFAULTS.ThemeIndex,
+		LogoPosition = DEFAULTS.LogoPosition,
+		MenuPosition = DEFAULTS.MenuPosition,
+		ActionBarPosition = DEFAULTS.ActionBarPosition,
+		Waypoints = { [1] = nil, [2] = nil },
+	}
+end
+local SAVED = sessionEnv._SiddhantPvPHubState
+
+-- Hub & Flight Configuration
+local CONFIG = {
+	ToggleKey = SAVED.ToggleKey or DEFAULTS.ToggleKey,
+	DashKey = DEFAULTS.DashKey,
+	BrakeKey = DEFAULTS.BrakeKey,
+	AscendKey = DEFAULTS.AscendKey,
+	DescendKey = DEFAULTS.DescendKey,
+	ToggleDebounceSeconds = 0.15,
+
+	FlySpeed = SAVED.FlySpeed or DEFAULTS.FlySpeed,
+	MinSpeed = 15,
+	MaxSpeed = 240,
+	SpeedStep = 10,
+	SprintMultiplier = SAVED.SprintMultiplier or DEFAULTS.SprintMultiplier,
+	MinSprint = 1.0,
+	MaxSprint = 3.5,
+	SprintStep = 0.25,
+
+	NoclipWhileFlying = SAVED.NoclipEnabled == true,
+	WalkOnWater = SAVED.WalkOnWaterEnabled ~= false,
+	AntiKnockback = SAVED.AntiKnockbackEnabled ~= false,
+	InfiniteAirJump = SAVED.InfiniteAirJumpEnabled ~= false,
+	AntiAFK = SAVED.AntiAFKEnabled ~= false,
+	OrbitTarget = SAVED.OrbitTargetEnabled == true,
+	TapToLock = SAVED.TapToLockEnabled ~= false,
+	AutoAuraEnabled = SAVED.AutoAuraEnabled ~= false,
+	AutoKenEnabled = SAVED.AutoKenEnabled == true,
+	AutoEscapeEnabled = SAVED.AutoEscapeEnabled == true,
+	ESPEnabled = SAVED.ESPEnabled ~= false,
+	ActionBarExpanded = SAVED.ActionBarExpanded ~= false,
+	ActiveTab = SAVED.ActiveTab or DEFAULTS.ActiveTab,
+	ComboPresetIndex = SAVED.ComboPresetIndex or DEFAULTS.ComboPresetIndex,
+
+	OrbitRadius = 20,
+	OrbitAngularSpeed = 3.2,
+	EscapeHPPercent = DEFAULTS.EscapeHPPercent,
+	MaxKnockbackSpeed = 115,
+
+	Acceleration = 15,
+	BrakeDeceleration = 34,
+	DashSpeed = 175,
+	DashDuration = 0.24,
+	DashCooldown = 1.5,
+	AutoLandDistance = 3.8,
+	MaxForce = 1e5,
+	Responsiveness = 25,
+
+	MaxBankAngleDeg = 22,
+	MaxCameraRollDeg = 3.5,
+	SprintFOVBoost = 10,
+	ThemeIndex = SAVED.ThemeIndex or DEFAULTS.ThemeIndex,
+	WindSoundId = "",
+
+	LogoTitle = "SIDDHANT",
+	LogoSubtitle = "PVP HUB",
+	LogoImageId = "",
+	LogoSize = 62,
+	DragThresholdPixels = 8,
+	LongPressSeconds = 0.38,
+	DoubleTapSeconds = 0.30,
+}
+
+-- Aimbot Configuration
+local AIM_CONFIG = {
+	ToggleKey = DEFAULTS.AimToggleKey,
+	HoldRightClick = true,
+	AimFOVRadius = SAVED.AimFOVRadius or DEFAULTS.AimFOVRadius,
+	Smoothness = 18,
+	LeadPrediction = 0.13,
+	TargetPartName = SAVED.TargetPartName or DEFAULTS.TargetPartName,
+	FallbackPartName = "HumanoidRootPart",
+	TeamCheck = true,
+	PvPStatusCheck = true,
+	VisibilityCheck = true,
+	MaxDistance = 850,
+	ShowFOVCircle = true,
+	StickyLockBonusPixels = 70,
+}
+
+-- Runtime State
+local flying = false
+local lastToggleTime = 0
+local moveInput = Vector3.zero
+local touchSprinting = false
+local menuOpen = false
+local awaitingRebind = false
+local hoverTime = 0
+local orbitAngle = 0
+local lastESPUpdateTime = 0
+local dashEndTime = 0
+local lastDashTime = -10
+local currentCameraRoll = 0
+local baseFOV: number? = nil
+local savedLogoPosition: UDim2 = SAVED.LogoPosition or DEFAULTS.LogoPosition
+local savedMenuPosition: UDim2 = SAVED.MenuPosition or DEFAULTS.MenuPosition
+local savedActionBarPosition: UDim2 = SAVED.ActionBarPosition or DEFAULTS.ActionBarPosition
+local waypoints: { [number]: CFrame? } = SAVED.Waypoints or { [1] = nil, [2] = nil }
+
+-- PvP, ESP & Aimbot Runtime State
+local aimbotActive = false
+local comboRunning = false
+local escapeTriggered = false
+local hoppingServer = false
+local lastAutoKenTime = 0
+local lockedTargetPlayer: Player? = nil
+local manualPriorityTarget: Player? = nil
+local espObjects: {
+	[Player]: {
+		highlight: Highlight?,
+		billboard: BillboardGui?,
+		label: TextLabel?,
+		hpFill: Frame?,
+	},
+} = {}
+
+-- Physics, FX & Connections
+local CAMERA_STEP_BIND = "SiddhantPvPHubCameraStep"
+local rootAttachment: Attachment? = nil
+local trailTopAttachment: Attachment? = nil
+local trailBottomAttachment: Attachment? = nil
+local flightTrail: Trail? = nil
+local windParticles: ParticleEmitter? = nil
+local windSound: Sound? = nil
+local linearVelocity: LinearVelocity? = nil
+local alignOrientation: AlignOrientation? = nil
+local heartbeatConn: RBXScriptConnection? = nil
+local passiveUtilityConn: RBXScriptConnection? = nil
+local animPlayedConn: RBXScriptConnection? = nil
+local descendantAddedConn: RBXScriptConnection? = nil
+local viewportConn: RBXScriptConnection? = nil
+local originalCollisions: { [BasePart]: boolean } = {}
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local waterRayParams = RaycastParams.new()
+waterRayParams.FilterType = Enum.RaycastFilterType.Include
+waterRayParams.IgnoreWater = false
+
+local aimRayParams = RaycastParams.new()
+aimRayParams.FilterType = Enum.RaycastFilterType.Exclude
+aimRayParams.IgnoreWater = true
+
+local tapLockRayParams = RaycastParams.new()
+tapLockRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local orbitRayParams = RaycastParams.new()
+orbitRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+-- UI References
+local rootScreenGui: ScreenGui? = nil
+local logoContainer: Frame? = nil
+local logoRingStroke: UIStroke? = nil
+local logoSubLabel: TextLabel? = nil
+local logoStatusDot: Frame? = nil
+local flyPillBtn: TextButton? = nil
+local menuToggleBtn: TextButton? = nil
+local menuFrame: Frame? = nil
+local telemetryFrame: Frame? = nil
+local telemetryLabel: TextLabel? = nil
+local touchPadFrame: Frame? = nil
+local stripDragHandle: TextButton? = nil
+local collapseStripBtn: TextButton? = nil
+local sprintChipBtn: TextButton? = nil
+local dashChipBtn: TextButton? = nil
+local aimChipBtn: TextButton? = nil
+local comboChipBtn: TextButton? = nil
+local kenChipBtn: TextButton? = nil
+local raceChipBtn: TextButton? = nil
+local fovCircleFrame: Frame? = nil
+local fovCircleStroke: UIStroke? = nil
+local lockIndicatorFrame: Frame? = nil
+local lockInfoLabel: TextLabel? = nil
+
+local refreshMenuUI: (() -> ())? = nil
+
+local function saveSessionSettings()
+	SAVED.ToggleKey = CONFIG.ToggleKey
+	SAVED.FlySpeed = CONFIG.FlySpeed
+	SAVED.SprintMultiplier = CONFIG.SprintMultiplier
+	SAVED.NoclipEnabled = CONFIG.NoclipWhileFlying
+	SAVED.WalkOnWaterEnabled = CONFIG.WalkOnWater
+	SAVED.AntiKnockbackEnabled = CONFIG.AntiKnockback
+	SAVED.InfiniteAirJumpEnabled = CONFIG.InfiniteAirJump
+	SAVED.AntiAFKEnabled = CONFIG.AntiAFK
+	SAVED.OrbitTargetEnabled = CONFIG.OrbitTarget
+	SAVED.TapToLockEnabled = CONFIG.TapToLock
+	SAVED.AutoAuraEnabled = CONFIG.AutoAuraEnabled
+	SAVED.AutoKenEnabled = CONFIG.AutoKenEnabled
+	SAVED.AutoEscapeEnabled = CONFIG.AutoEscapeEnabled
+	SAVED.ESPEnabled = CONFIG.ESPEnabled
+	SAVED.ActionBarExpanded = CONFIG.ActionBarExpanded
+	SAVED.ActiveTab = CONFIG.ActiveTab
+	SAVED.ComboPresetIndex = CONFIG.ComboPresetIndex
+	SAVED.AimFOVRadius = AIM_CONFIG.AimFOVRadius
+	SAVED.TargetPartName = AIM_CONFIG.TargetPartName
+	SAVED.ThemeIndex = CONFIG.ThemeIndex
+	SAVED.LogoPosition = savedLogoPosition
+	SAVED.MenuPosition = savedMenuPosition
+	SAVED.ActionBarPosition = savedActionBarPosition
+	SAVED.Waypoints = waypoints
+end
+
+local function getTheme()
+	return THEMES[CONFIG.ThemeIndex] or THEMES[1]
+end
+
+local function getActiveComboPreset()
+	return COMBO_PRESETS[CONFIG.ComboPresetIndex] or COMBO_PRESETS[1]
+end
+
+local function getActiveCamera(): Camera?
+	return workspace.CurrentCamera
+end
+
+local function getCharacterParts(character: Model?)
+	if not character then
+		return nil, nil, nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+	if not humanoid or not rootPart then
+		return nil, nil, nil
+	end
+	return humanoid, rootPart, animator
+end
+
+-- Blox Fruits Remote & Hybrid Mobile/PC Input Helpers
+local function getCommRemote(): RemoteFunction?
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	if remotes then
+		local commF = remotes:FindFirstChild("CommF_")
+		if commF and commF:IsA("RemoteFunction") then
+			return commF
+		end
+	end
+	return nil
+end
+
+local function fireMobileSkillButton(keyName: string): boolean
+	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then
+		return false
+	end
+
+	for _, descendant in ipairs(playerGui:GetDescendants()) do
+		if (descendant:IsA("TextButton") or descendant:IsA("ImageButton")) and descendant.Visible then
+			local parentGui = descendant:FindFirstAncestorOfClass("ScreenGui")
+			if parentGui and parentGui.Name ~= "SiddhantPvPHubGui" then
+				local btnName = string.upper(descendant.Name)
+				local btnText = descendant:IsA("TextButton") and string.upper(descendant.Text) or ""
+				if btnName == keyName or btnText == keyName or string.find(btnName, "SKILL" .. keyName, 1, true) then
+					pcall(function()
+						if typeof(firesignal) == "function" then
+							firesignal(descendant.MouseButton1Click)
+							firesignal(descendant.Activated)
+						else
+							local pos = descendant.AbsolutePosition + (descendant.AbsoluteSize * 0.5)
+							VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+							task.wait(0.03)
+							VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+						end
+					end)
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+local function executeSkillKey(keyCode: Enum.KeyCode, equippedTool: Tool?, holdSeconds: number?)
+	local hold = holdSeconds or 0.04
+
+	pcall(function()
+		VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+		task.wait(hold)
+		VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+	end)
+
+	if UserInputService.TouchEnabled then
+		local firedButton = fireMobileSkillButton(keyCode.Name)
+		if not firedButton and equippedTool then
+			pcall(function()
+				equippedTool:Activate()
+			end)
+		end
+	end
+end
+
+local function activateBusoAura()
+	local char = player.Character
+	if not char or char:FindFirstChild("HasBuso") then
+		return
+	end
+	local commF = getCommRemote()
+	if commF then
+		task.spawn(function()
+			pcall(function()
+				commF:InvokeServer("Buso")
+			end)
+		end)
+	end
+end
+
+local function toggleInstinctKen()
+	executeSkillKey(Enum.KeyCode.E, nil, 0.03)
+end
+
+local function triggerRaceV3V4()
+	local commF = getCommRemote()
+	if commF then
+		task.spawn(function()
+			pcall(function()
+				commF:InvokeServer("ActivateAbility")
+			end)
+		end)
+	end
+	executeSkillKey(Enum.KeyCode.T, nil, 0.03)
+	executeSkillKey(Enum.KeyCode.Y, nil, 0.03)
+end
+
+local function equipToolByCategory(category: string): Tool?
+	local char = player.Character
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not char or not humanoid or not backpack then
+		return nil
+	end
+
+	for _, item in ipairs(char:GetChildren()) do
+		if item:IsA("Tool") then
+			local tip = item.ToolTip
+			if tip == category or string.find(string.lower(tip), string.lower(category), 1, true) then
+				return item
+			end
+		end
+	end
+
+	for _, item in ipairs(backpack:GetChildren()) do
+		if item:IsA("Tool") then
+			local tip = item.ToolTip
+			if tip == category or string.find(string.lower(tip), string.lower(category), 1, true) then
+				humanoid:EquipTool(item)
+				return item
+			end
+		end
+	end
+
+	return nil
+end
+
+-- Blox Fruits PvP Status & Target Validation
+local function isTargetPvPEligible(targetPlayer: Player, targetChar: Model): boolean
+	if not AIM_CONFIG.PvPStatusCheck then
+		return true
+	end
+	if targetChar:FindFirstChildOfClass("ForceField") then
+		return false
+	end
+	local pvpFlag = targetPlayer:FindFirstChild("PvPDisabled") or targetChar:FindFirstChild("PvPDisabled")
+	if pvpFlag and pvpFlag:IsA("BoolValue") and pvpFlag.Value == true then
+		return false
+	end
+	local safeZoneFlag = targetPlayer:FindFirstChild("SafeZone") or targetChar:FindFirstChild("SafeZone")
+	if safeZoneFlag and safeZoneFlag:IsA("BoolValue") and safeZoneFlag.Value == true then
+		return false
+	end
+	return true
+end
+
+local function validateTargetPlayer(targetPlayer: Player?, cam: Camera, ignoreWallCheck: boolean?): (boolean, BasePart?, Humanoid?, number)
+	if not targetPlayer or targetPlayer == player or not targetPlayer.Parent then
+		return false, nil, nil, math.huge
+	end
+
+	if AIM_CONFIG.TeamCheck and player.Team ~= nil and targetPlayer.Team == player.Team then
+		return false, nil, nil, math.huge
+	end
+
+	local char = targetPlayer.Character
+	if not char or not isTargetPvPEligible(targetPlayer, char) then
+		return false, nil, nil, math.huge
+	end
+
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
+		return false, nil, nil, math.huge
+	end
+
+	local part = (char:FindFirstChild(AIM_CONFIG.TargetPartName) :: BasePart?)
+		or (char:FindFirstChild(AIM_CONFIG.FallbackPartName) :: BasePart?)
+	if not part then
+		return false, nil, nil, math.huge
+	end
+
+	local dist = (part.Position - cam.CFrame.Position).Magnitude
+	if dist > AIM_CONFIG.MaxDistance then
+		return false, nil, nil, dist
+	end
+
+	if AIM_CONFIG.VisibilityCheck and not ignoreWallCheck then
+		local excludeList: { Instance } = { char }
+		if player.Character then
+			table.insert(excludeList, player.Character)
+		end
+		aimRayParams.FilterDescendantsInstances = excludeList
+
+		local origin = cam.CFrame.Position
+		local direction = part.Position - origin
+		local hit = workspace:Raycast(origin, direction, aimRayParams)
+		if hit and not hit.Instance:IsDescendantOf(char) then
+			return false, nil, nil, dist
+		end
+	end
+
+	return true, part, hum, dist
+end
+
+local function findBestAimTarget(cam: Camera): (Player?, BasePart?, Humanoid?, Vector2?, number)
+	local screenCenter = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y * 0.5)
+
+	-- 0. Manual Priority Target (auto-clears when invalid, dead, safe-zoned, or out of range)
+	if manualPriorityTarget then
+		local valid, part, hum, dist = validateTargetPlayer(manualPriorityTarget, cam, true)
+		if not valid or not part or not hum then
+			manualPriorityTarget = nil
+			if refreshMenuUI then
+				task.defer(refreshMenuUI)
+			end
+		else
+			local predictedPos = part.Position + (part.AssemblyLinearVelocity * AIM_CONFIG.LeadPrediction)
+			local screenPoint, onScreen = cam:WorldToViewportPoint(predictedPos)
+			if onScreen and screenPoint.Z > 0 then
+				return manualPriorityTarget, part, hum, Vector2.new(screenPoint.X, screenPoint.Y), dist
+			end
+		end
+	end
+
+	-- 1. Sticky Lock Check
+	if lockedTargetPlayer then
+		local valid, part, hum, dist = validateTargetPlayer(lockedTargetPlayer, cam, false)
+		if valid and part and hum then
+			local predictedPos = part.Position + (part.AssemblyLinearVelocity * AIM_CONFIG.LeadPrediction)
+			local screenPoint, onScreen = cam:WorldToViewportPoint(predictedPos)
+			if onScreen and screenPoint.Z > 0 then
+				local screenPos2D = Vector2.new(screenPoint.X, screenPoint.Y)
+				local distFromCenter = (screenPos2D - screenCenter).Magnitude
+				if distFromCenter <= (AIM_CONFIG.AimFOVRadius + AIM_CONFIG.StickyLockBonusPixels) then
+					return lockedTargetPlayer, part, hum, screenPos2D, dist
+				end
+			end
+		end
+	end
+
+	-- 2. Acquire closest target to screen center inside AimFOVRadius
+	local bestPlayer: Player? = nil
+	local bestPart: BasePart? = nil
+	local bestHum: Humanoid? = nil
+	local bestScreenPos: Vector2? = nil
+	local bestWorldDist = 0
+	local bestDistToCenter = AIM_CONFIG.AimFOVRadius
+
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		local valid, targetPart, targetHum, worldDist = validateTargetPlayer(otherPlayer, cam, false)
+		if valid and targetPart and targetHum then
+			local predictedPos = targetPart.Position + (targetPart.AssemblyLinearVelocity * AIM_CONFIG.LeadPrediction)
+			local screenPoint, onScreen = cam:WorldToViewportPoint(predictedPos)
+			if onScreen and screenPoint.Z > 0 then
+				local screenPos2D = Vector2.new(screenPoint.X, screenPoint.Y)
+				local distFromCenter = (screenPos2D - screenCenter).Magnitude
+				if distFromCenter <= bestDistToCenter then
+					bestDistToCenter = distFromCenter
+					bestPlayer = otherPlayer
+					bestPart = targetPart
+					bestHum = targetHum
+					bestScreenPos = screenPos2D
+					bestWorldDist = worldDist
+				end
+			end
+		end
+	end
+
+	return bestPlayer, bestPart, bestHum, bestScreenPos, bestWorldDist
+end
+
+-- Player ESP with Visual Color-Shifting HP Bars & PvP Status Badges
+local function clearPlayerESP(targetPlayer: Player)
+	local entry = espObjects[targetPlayer]
+	if entry then
+		if entry.highlight then
+			entry.highlight:Destroy()
+		end
+		if entry.billboard then
+			entry.billboard:Destroy()
+		end
+		espObjects[targetPlayer] = nil
+	end
+end
+
+local function clearAllESP()
+	for targetPlayer in pairs(espObjects) do
+		clearPlayerESP(targetPlayer)
+	end
+end
+
+local function updateESPSystem(cam: Camera)
+	if not CONFIG.ESPEnabled then
+		clearAllESP()
+		return
+	end
+
+	local theme = getTheme()
+
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer == player then
+			continue
+		end
+
+		local char = otherPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local head = char and (char:FindFirstChild("Head") :: BasePart?)
+		local isEnemy = not (AIM_CONFIG.TeamCheck and player.Team ~= nil and otherPlayer.Team == player.Team)
+
+		if not char or not hum or hum.Health <= 0 or not head or not isEnemy then
+			clearPlayerESP(otherPlayer)
+			continue
+		end
+
+		local dist = (head.Position - cam.CFrame.Position).Magnitude
+		if dist > 1500 then
+			clearPlayerESP(otherPlayer)
+			continue
+		end
+
+		local entry = espObjects[otherPlayer]
+		if not entry or not entry.highlight or entry.highlight.Parent ~= char then
+			clearPlayerESP(otherPlayer)
+
+			local hl = Instance.new("Highlight")
+			hl.Name = "SiddhantPvPESP"
+			hl.Adornee = char
+			hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			hl.FillTransparency = 0.72
+			hl.OutlineTransparency = 0.1
+			hl.Parent = char
+
+			local bb = Instance.new("BillboardGui")
+			bb.Name = "SiddhantPvPTag"
+			bb.Adornee = head
+			bb.Size = UDim2.fromOffset(164, 42)
+			bb.StudsOffset = Vector3.new(0, 3.0, 0)
+			bb.AlwaysOnTop = true
+			bb.Parent = head
+
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2.new(1, 0, 0, 28)
+			lbl.BackgroundTransparency = 1
+			lbl.Font = Enum.Font.GothamBold
+			lbl.TextSize = 11
+			lbl.TextStrokeTransparency = 0.35
+			lbl.Parent = bb
+
+			local hpBg = Instance.new("Frame")
+			hpBg.Name = "HPBarBg"
+			hpBg.Size = UDim2.fromOffset(96, 5)
+			hpBg.AnchorPoint = Vector2.new(0.5, 0)
+			hpBg.Position = UDim2.new(0.5, 0, 0, 30)
+			hpBg.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+			hpBg.BorderSizePixel = 0
+			hpBg.Parent = bb
+
+			local bgCorner = Instance.new("UICorner")
+			bgCorner.CornerRadius = UDim.new(1, 0)
+			bgCorner.Parent = hpBg
+
+			local hpFill = Instance.new("Frame")
+			hpFill.Name = "HPBarFill"
+			hpFill.Size = UDim2.fromScale(1, 1)
+			hpFill.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+			hpFill.BorderSizePixel = 0
+			hpFill.Parent = hpBg
+
+			local fillCorner = Instance.new("UICorner")
+			fillCorner.CornerRadius = UDim.new(1, 0)
+			fillCorner.Parent = hpFill
+
+			entry = { highlight = hl, billboard = bb, label = lbl, hpFill = hpFill }
+			espObjects[otherPlayer] = entry
+		end
+
+		local isPriority = (otherPlayer == manualPriorityTarget) or (otherPlayer == lockedTargetPlayer)
+		local pvpReady = isTargetPvPEligible(otherPlayer, char)
+		local hpRatio = math.clamp(hum.Health / math.max(1, hum.MaxHealth), 0, 1)
+
+		if entry.highlight then
+			entry.highlight.FillColor = isPriority and Color3.fromRGB(239, 68, 68) or theme.primary
+			entry.highlight.OutlineColor = isPriority and Color3.fromRGB(254, 202, 202) or theme.bright
+		end
+
+		if entry.hpFill then
+			entry.hpFill.Size = UDim2.fromScale(hpRatio, 1)
+			if hpRatio > 0.55 then
+				entry.hpFill.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+			elseif hpRatio > 0.28 then
+				entry.hpFill.BackgroundColor3 = Color3.fromRGB(234, 179, 8)
+			else
+				entry.hpFill.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+			end
+		end
+
+		if entry.label then
+			local statusBadge = pvpReady and "[PvP ON]" or "[Safe]"
+			local tagPrefix = isPriority and "🎯 " or ""
+			entry.label.TextColor3 = isPriority and Color3.fromRGB(252, 165, 165) or Color3.fromRGB(241, 245, 249)
+			entry.label.Text = string.format(
+				"%s%s %s\n%d HP • %d st",
+				tagPrefix,
+				otherPlayer.DisplayName,
+				statusBadge,
+				math.ceil(hum.Health),
+				math.floor(dist + 0.5)
+			)
+		end
+	end
+end
+
+local function cycleManualPriorityTarget()
+	local candidates: { Player } = {}
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player then
+			local isEnemy = not (AIM_CONFIG.TeamCheck and player.Team ~= nil and otherPlayer.Team == player.Team)
+			if isEnemy and otherPlayer.Character then
+				table.insert(candidates, otherPlayer)
+			end
+		end
+	end
+
+	if #candidates == 0 then
+		manualPriorityTarget = nil
+		return
+	end
+
+	if not manualPriorityTarget then
+		manualPriorityTarget = candidates[1]
+		return
+	end
+
+	for idx, p in ipairs(candidates) do
+		if p == manualPriorityTarget then
+			if idx < #candidates then
+				manualPriorityTarget = candidates[idx + 1]
+			else
+				manualPriorityTarget = nil
+			end
+			return
+		end
+	end
+
+	manualPriorityTarget = candidates[1]
+end
+
+-- Safe HTTP Fetch for Server Hopping across StarterCharacterScriptss & Executors
+local function fetchPublicServersJSON(placeId: number): string?
+	local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100", placeId)
+
+	if typeof(game.HttpGet) == "function" then
+		local ok, res = pcall(function()
+			return game:HttpGet(url)
+		end)
+		if ok and typeof(res) == "string" and #res > 0 then
+			return res
+		end
+	end
+
+	local reqFn = (typeof(request) == "function" and request)
+		or (typeof(http_request) == "function" and http_request)
+		or (typeof(syn) == "table" and typeof(syn.request) == "function" and syn.request)
+		or nil
+
+	if reqFn then
+		local ok, res = pcall(function()
+			return reqFn({ Url = url, Method = "GET" })
+		end)
+		if ok and typeof(res) == "table" and typeof(res.Body) == "string" and #res.Body > 0 then
+			return res.Body
+		end
+	end
+
+	return nil
+end
+
+local function rejoinCurrentServer()
+	if hoppingServer then
+		return
+	end
+	hoppingServer = true
+	pcall(function()
+		TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+	end)
+	task.delay(4, function()
+		hoppingServer = false
+	end)
+end
+
+local function hopToFreshServer()
+	if hoppingServer then
+		return
+	end
+	hoppingServer = true
+
+	task.spawn(function()
+		local placeId = game.PlaceId
+		local currentJobId = game.JobId
+		local chosenServerId: string? = nil
+
+		local rawJson = fetchPublicServersJSON(placeId)
+		if rawJson then
+			local ok, decoded = pcall(function()
+				return HttpService:JSONDecode(rawJson)
+			end)
+			if ok and typeof(decoded) == "table" and typeof(decoded.data) == "table" then
+				for _, server in ipairs(decoded.data) do
+					if typeof(server) == "table" and server.id and server.id ~= currentJobId then
+						local playing = tonumber(server.playing) or 0
+						local maxPlayers = tonumber(server.maxPlayers) or 12
+						if playing >= 1 and playing < (maxPlayers - 1) then
+							chosenServerId = tostring(server.id)
+							break
+						end
+					end
+				end
+			end
+		end
+
+		pcall(function()
+			if chosenServerId then
+				TeleportService:TeleportToPlaceInstance(placeId, chosenServerId, player)
+			else
+				TeleportService:Teleport(placeId, player)
+			end
+		end)
+
+		task.wait(4)
+		hoppingServer = false
+	end)
+end
+
+local function isAimingEngaged(): boolean
+	if aimbotActive or comboRunning then
+		return true
+	end
+	if AIM_CONFIG.HoldRightClick and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+		return true
+	end
+	return false
+end
+
+local function toggleAimbot()
+	aimbotActive = not aimbotActive
+	if not aimbotActive then
+		lockedTargetPlayer = nil
+	end
+	if aimChipBtn then
+		aimChipBtn.Text = aimbotActive and "🎯 AIM: ON" or "🎯 AIM"
+		aimChipBtn.BackgroundColor3 = aimbotActive and Color3.fromRGB(220, 38, 38) or Color3.fromRGB(24, 27, 34)
+	end
+end
+
+-- Automated Combo Execution Loop using Selectable Preset & Mobile/PC Hybrid Casting
+local function runPvPCombo()
+	if comboRunning then
+		comboRunning = false
+		if comboChipBtn then
+			comboChipBtn.Text = "⚡ COMBO"
+			comboChipBtn.BackgroundColor3 = Color3.fromRGB(24, 27, 34)
+		end
+		return
+	end
+
+	comboRunning = true
+	if comboChipBtn then
+		comboChipBtn.Text = "⚡ STOP"
+		comboChipBtn.BackgroundColor3 = Color3.fromRGB(217, 119, 6)
+	end
+
+	task.spawn(function()
+		if CONFIG.AutoAuraEnabled then
+			activateBusoAura()
+		end
+
+		local preset = getActiveComboPreset()
+		for _, step in ipairs(preset.steps) do
+			if not comboRunning then
+				break
+			end
+			local hum = select(1, getCharacterParts(player.Character))
+			if not hum or hum.Health <= 0 then
+				break
+			end
+
+			local tool = equipToolByCategory(step.category)
+			if tool then
+				task.wait(0.06)
+				executeSkillKey(step.key, tool, step.hold or 0.04)
+				task.wait(step.delay)
+			end
+		end
+
+		comboRunning = false
+		if comboChipBtn then
+			comboChipBtn.Text = "⚡ COMBO"
+			comboChipBtn.BackgroundColor3 = Color3.fromRGB(24, 27, 34)
+		end
+	end)
+end
+
+-- Clamp any GuiObject cleanly inside the current viewport
+local function clampFrameToViewport(frame: GuiObject?): UDim2?
+	if not frame then
+		return nil
+	end
+	local cam = getActiveCamera()
+	if not cam then
+		return frame.Position
+	end
+
+	local viewport = cam.ViewportSize
+	local absPos = frame.AbsolutePosition
+	local absSize = frame.AbsoluteSize
+	if viewport.X <= 0 or viewport.Y <= 0 or absSize.X <= 0 or absSize.Y <= 0 then
+		return frame.Position
+	end
+
+	local clampedX = math.clamp(absPos.X, 4, math.max(4, viewport.X - absSize.X - 4))
+	local clampedY = math.clamp(absPos.Y, 4, math.max(4, viewport.Y - absSize.Y - 4))
+	local newPos = UDim2.fromOffset(clampedX, clampedY)
+	frame.Position = newPos
+	return newPos
+end
+
+local function clampAllDraggableUI()
+	if logoContainer then
+		local pos = clampFrameToViewport(logoContainer)
+		if pos then
+			savedLogoPosition = pos
+		end
+	end
+	if menuFrame and menuFrame.Visible then
+		local pos = clampFrameToViewport(menuFrame)
+		if pos then
+			savedMenuPosition = pos
+		end
+	end
+	if touchPadFrame then
+		local pos = clampFrameToViewport(touchPadFrame)
+		if pos then
+			savedActionBarPosition = pos
+		end
+	end
+end
+
+-- Event-driven animation locking while flying
+local function stopCurrentTracks(humanoid: Humanoid?, animator: Animator?)
+	if animator then
+		for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+			track:Stop(0)
+		end
+	end
+	if humanoid then
+		for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+			track:Stop(0)
+		end
+	end
+end
+
+local function setAnimationsLocked(locked: boolean)
+	if animPlayedConn then
+		animPlayedConn:Disconnect()
+		animPlayedConn = nil
+	end
+
+	local humanoid, _, animator = getCharacterParts(player.Character)
+	if not locked then
+		return
+	end
+
+	stopCurrentTracks(humanoid, animator)
+
+	if animator then
+		animPlayedConn = animator.AnimationPlayed:Connect(function(track: AnimationTrack)
+			if flying then
+				track:Stop(0)
+			end
+		end)
+	end
+end
+
+-- Noclip state management
+local function setNoclipEnabled(enabled: boolean)
+	if descendantAddedConn then
+		descendantAddedConn:Disconnect()
+		descendantAddedConn = nil
+	end
+
+	local character = player.Character
+	if not enabled or not flying or not character then
+		for part, wasCollidable in pairs(originalCollisions) do
+			if part and part.Parent then
+				part.CanCollide = wasCollidable
+			end
+		end
+		table.clear(originalCollisions)
+		return
+	end
+
+	for _, descendant in ipairs(character:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			if originalCollisions[descendant] == nil then
+				originalCollisions[descendant] = descendant.CanCollide
+			end
+			descendant.CanCollide = false
+		end
+	end
+
+	descendantAddedConn = character.DescendantAdded:Connect(function(descendant: Instance)
+		if flying and CONFIG.NoclipWhileFlying and descendant:IsA("BasePart") then
+			if originalCollisions[descendant] == nil then
+				originalCollisions[descendant] = descendant.CanCollide
+			end
+			descendant.CanCollide = false
+		end
+	end)
+end
+
+-- Flight visual & audio effects
+local function destroyFlightFX()
+	if flightTrail then
+		flightTrail:Destroy()
+		flightTrail = nil
+	end
+	if windParticles then
+		windParticles:Destroy()
+		windParticles = nil
+	end
+	if windSound then
+		windSound:Destroy()
+		windSound = nil
+	end
+	if trailTopAttachment then
+		trailTopAttachment:Destroy()
+		trailTopAttachment = nil
+	end
+	if trailBottomAttachment then
+		trailBottomAttachment:Destroy()
+		trailBottomAttachment = nil
+	end
+end
+
+local function createFlightFX(rootPart: BasePart)
+	destroyFlightFX()
+
+	local theme = getTheme()
+
+	local attTop = Instance.new("Attachment")
+	attTop.Name = "FlightTrailTop"
+	attTop.Position = Vector3.new(0, 1.4, 0.3)
+	attTop.Parent = rootPart
+	trailTopAttachment = attTop
+
+	local attBot = Instance.new("Attachment")
+	attBot.Name = "FlightTrailBottom"
+	attBot.Position = Vector3.new(0, -1.4, 0.3)
+	attBot.Parent = rootPart
+	trailBottomAttachment = attBot
+
+	local trail = Instance.new("Trail")
+	trail.Name = "FlightWindTrail"
+	trail.Attachment0 = attTop
+	trail.Attachment1 = attBot
+	trail.Lifetime = 0.32
+	trail.MinLength = 0.1
+	trail.FaceCamera = true
+	trail.LightEmission = 0.65
+	trail.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, theme.bright),
+		ColorSequenceKeypoint.new(1, theme.primary),
+	})
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.WidthScale = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.9),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	trail.Parent = rootPart
+	flightTrail = trail
+
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "FlightWindParticles"
+	particles.Rate = 18
+	particles.Lifetime = NumberRange.new(0.25, 0.45)
+	particles.Speed = NumberRange.new(2, 6)
+	particles.SpreadAngle = Vector2.new(35, 35)
+	particles.LightEmission = 0.8
+	particles.Color = ColorSequence.new(theme.bright, theme.primary)
+	particles.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.18),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	particles.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.25),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	particles.Parent = rootPart
+	windParticles = particles
+
+	if CONFIG.WindSoundId ~= "" then
+		local snd = Instance.new("Sound")
+		snd.Name = "FlightWindSound"
+		snd.SoundId = CONFIG.WindSoundId
+		snd.Looped = true
+		snd.Volume = 0.05
+		snd.PlaybackSpeed = 0.85
+		snd.Parent = rootPart
+		snd:Play()
+		windSound = snd
+	end
+end
+
+local function restoreCameraEffects()
+	local cam = getActiveCamera()
+	if cam and baseFOV then
+		cam.FieldOfView = baseFOV
+	end
+	baseFOV = nil
+	currentCameraRoll = 0
+end
+
+local function clearFlightInstances()
+	if heartbeatConn then
+		heartbeatConn:Disconnect()
+		heartbeatConn = nil
+	end
+	if linearVelocity then
+		linearVelocity:Destroy()
+		linearVelocity = nil
+	end
+	if alignOrientation then
+		alignOrientation:Destroy()
+		alignOrientation = nil
+	end
+	if rootAttachment then
+		rootAttachment:Destroy()
+		rootAttachment = nil
+	end
+	destroyFlightFX()
+	setAnimationsLocked(false)
+	setNoclipEnabled(false)
+	restoreCameraEffects()
+end
+
+local function syncAllUI()
+	local theme = getTheme()
+
+	if flyPillBtn then
+		flyPillBtn.Text = flying and "✈ FLY: ON" or "✈ FLY: OFF"
+		flyPillBtn.BackgroundColor3 = flying and theme.primary or Color3.fromRGB(24, 27, 34)
+	end
+
+	if menuToggleBtn then
+		menuToggleBtn.BackgroundColor3 = menuOpen and theme.primary or Color3.fromRGB(24, 27, 34)
+	end
+
+	if logoRingStroke then
+		logoRingStroke.Color = flying and Color3.fromRGB(74, 222, 128) or theme.primary
+	end
+
+	if logoSubLabel then
+		logoSubLabel.TextColor3 = theme.bright
+	end
+
+	if logoStatusDot then
+		logoStatusDot.BackgroundColor3 = flying and Color3.fromRGB(34, 197, 94) or Color3.fromRGB(148, 163, 184)
+	end
+
+	if menuFrame then
+		menuFrame.Visible = menuOpen
+		if menuOpen then
+			task.defer(clampAllDraggableUI)
+		end
+	end
+
+	if telemetryFrame then
+		telemetryFrame.Visible = flying
+	end
+
+	if collapseStripBtn then
+		collapseStripBtn.Text = CONFIG.ActionBarExpanded and "▶" or "◀"
+	end
+
+	local expanded = CONFIG.ActionBarExpanded
+	if comboChipBtn then
+		comboChipBtn.Visible = expanded
+	end
+	if aimChipBtn then
+		aimChipBtn.Visible = expanded
+		aimChipBtn.Text = aimbotActive and "🎯 AIM: ON" or "🎯 AIM"
+		aimChipBtn.BackgroundColor3 = aimbotActive and Color3.fromRGB(220, 38, 38) or Color3.fromRGB(24, 27, 34)
+	end
+	if kenChipBtn then
+		kenChipBtn.Visible = expanded
+	end
+	if raceChipBtn then
+		raceChipBtn.Visible = expanded
+	end
+	if sprintChipBtn then
+		sprintChipBtn.Visible = expanded and flying
+		sprintChipBtn.Text = touchSprinting and "SPRINT: ON" or "SPRINT"
+		sprintChipBtn.BackgroundColor3 = touchSprinting and Color3.fromRGB(217, 119, 6) or Color3.fromRGB(24, 27, 34)
+	end
+	if dashChipBtn then
+		dashChipBtn.Visible = expanded and flying
+	end
+
+	if flightTrail then
+		flightTrail.Color = ColorSequence.new(theme.bright, theme.primary)
+	end
+
+	if windParticles then
+		windParticles.Color = ColorSequence.new(theme.bright, theme.primary)
+	end
+
+	if refreshMenuUI then
+		refreshMenuUI()
+	end
+end
+
+local function stopFlight()
+	flying = false
+	touchSprinting = false
+	hoverTime = 0
+	dashEndTime = 0
+	clearFlightInstances()
+	syncAllUI()
+
+	local humanoid = select(1, getCharacterParts(player.Character))
+	if humanoid and humanoid.Health > 0 then
+		humanoid.PlatformStand = false
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+	end
+end
+
+local function triggerAirDash()
+	if not flying then
+		return
+	end
+	local now = os.clock()
+	if (now - lastDashTime) < CONFIG.DashCooldown then
+		return
+	end
+	lastDashTime = now
+	dashEndTime = now + CONFIG.DashDuration
+end
+
+local function getGamepadInput(): (Vector2, number)
+	if not UserInputService.GamepadEnabled then
+		return Vector2.zero, 0
+	end
+
+	local stick = Vector2.zero
+	local vertical = 0
+
+	for _, inputObj in ipairs(UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1)) do
+		if inputObj.KeyCode == Enum.KeyCode.Thumbstick1 then
+			local pos = inputObj.Position
+			if pos.Magnitude > 0.15 then
+				stick = Vector2.new(pos.X, pos.Y)
+			end
+		end
+	end
+
+	if UserInputService:IsGamepadButtonDown(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonA) then
+		vertical += 1
+	end
+	if UserInputService:IsGamepadButtonDown(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonB) then
+		vertical -= 1
+	end
+
+	return stick, vertical
+end
+
+local function getDesiredMovement(humanoid: Humanoid): (Vector3, number, boolean)
+	local cam = getActiveCamera()
+	if not cam then
+		return Vector3.zero, 0, false
+	end
+
+	local braking = UserInputService:IsKeyDown(CONFIG.BrakeKey)
+	if braking then
+		return Vector3.zero, 0, true
+	end
+
+	local forward = 0
+	local right = 0
+	local up = 0
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+		forward += 1
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+		forward -= 1
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		right += 1
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+		right -= 1
+	end
+	if UserInputService:IsKeyDown(CONFIG.AscendKey) then
+		up += 1
+	end
+	if UserInputService:IsKeyDown(CONFIG.DescendKey) then
+		up -= 1
+	end
+
+	local padStick, padUp = getGamepadInput()
+	right += padStick.X
+	forward += padStick.Y
+	up += padUp
+
+	local mobileMove = humanoid.MoveDirection
+	if mobileMove.Magnitude > 0.05 then
+		local camLookXZ = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+		local camRightXZ = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
+		if camLookXZ.Magnitude > 1e-4 then
+			camLookXZ = camLookXZ.Unit
+		end
+		if camRightXZ.Magnitude > 1e-4 then
+			camRightXZ = camRightXZ.Unit
+		end
+		forward += mobileMove:Dot(camLookXZ)
+		right += mobileMove:Dot(camRightXZ)
+	end
+
+	forward = math.clamp(forward, -1, 1)
+	right = math.clamp(right, -1, 1)
+	up = math.clamp(up, -1, 1)
+
+	local forwardAxis = cam.CFrame.LookVector
+	local rightFlat = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
+	local rightAxis = rightFlat.Magnitude > 1e-4 and rightFlat.Unit or Vector3.zero
+
+	local direction = (forwardAxis * forward) + (rightAxis * right) + (Vector3.yAxis * up)
+	if direction.Magnitude > 1 then
+		direction = direction.Unit
+	end
+
+	return direction, right, false
+end
+
+local function computeFlightOrientation(position: Vector3, targetDir: Vector3, strafeAmount: number, cam: Camera?): CFrame?
+	local bankRad = math.rad(-strafeAmount * CONFIG.MaxBankAngleDeg)
+
+	if targetDir.Magnitude > 0.05 then
+		local horizontalDir = Vector3.new(targetDir.X, 0, targetDir.Z)
+		local yawForward: Vector3
+		if horizontalDir.Magnitude > 0.08 then
+			yawForward = horizontalDir.Unit
+		elseif cam then
+			local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+			yawForward = camFlat.Magnitude > 1e-4 and camFlat.Unit or Vector3.new(0, 0, -1)
+		else
+			yawForward = Vector3.new(0, 0, -1)
+		end
+
+		local yawFrame = CFrame.lookAt(position, position + yawForward)
+		local pitchAngle = math.asin(math.clamp(targetDir.Y, -0.92, 0.92))
+		return yawFrame * CFrame.Angles(pitchAngle, 0, bankRad)
+	elseif cam then
+		local flatLook = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+		if flatLook.Magnitude > 1e-4 then
+			return CFrame.lookAt(position, position + flatLook.Unit)
+		end
+	end
+
+	return nil
+end
+
+local function getAltitudeAboveGround(character: Model, rootPart: BasePart): number
+	rayParams.FilterDescendantsInstances = { character }
+	local hit = workspace:Raycast(rootPart.Position, Vector3.new(0, -1000, 0), rayParams)
+	if hit then
+		return math.max(0, rootPart.Position.Y - hit.Position.Y)
+	end
+	return math.max(0, rootPart.Position.Y)
+end
+
+local function startFlight()
+	local humanoid, rootPart = getCharacterParts(player.Character)
+	if not humanoid or not rootPart or humanoid.Health <= 0 then
+		return
+	end
+
+	clearFlightInstances()
+	flying = true
+	moveInput = Vector3.zero
+	hoverTime = 0
+	syncAllUI()
+
+	local cam = getActiveCamera()
+	if cam then
+		baseFOV = cam.FieldOfView
+	end
+
+	humanoid.PlatformStand = true
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	setAnimationsLocked(true)
+	setNoclipEnabled(CONFIG.NoclipWhileFlying)
+	createFlightFX(rootPart)
+
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "FlightAttachment"
+	attachment.Parent = rootPart
+	rootAttachment = attachment
+
+	local lv = Instance.new("LinearVelocity")
+	lv.Name = "FlightLinearVelocity"
+	lv.Attachment0 = attachment
+	lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+	lv.MaxForce = CONFIG.MaxForce
+	lv.VectorVelocity = Vector3.zero
+	lv.Parent = rootPart
+	linearVelocity = lv
+
+	local ao = Instance.new("AlignOrientation")
+	ao.Name = "FlightAlignOrientation"
+	ao.Attachment0 = attachment
+	ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	ao.MaxTorque = CONFIG.MaxForce
+	ao.Responsiveness = CONFIG.Responsiveness
+	ao.CFrame = rootPart.CFrame
+	ao.Parent = rootPart
+	alignOrientation = ao
+
+	heartbeatConn = RunService.Heartbeat:Connect(function(dt: number)
+		if not flying then
+			return
+		end
+
+		local currentHumanoid, currentRoot = getCharacterParts(player.Character)
+		if not currentHumanoid or not currentRoot or currentHumanoid.Health <= 0 or not linearVelocity or not alignOrientation then
+			stopFlight()
+			return
+		end
+
+		local activeCam = getActiveCamera()
+		local targetDir, strafeAmount, braking = getDesiredMovement(currentHumanoid)
+
+		if not CONFIG.NoclipWhileFlying then
+			local descending = UserInputService:IsKeyDown(CONFIG.DescendKey) or targetDir.Y < -0.45
+			if descending and player.Character then
+				local groundDist = getAltitudeAboveGround(player.Character, currentRoot)
+				if groundDist <= CONFIG.AutoLandDistance then
+					stopFlight()
+					return
+				end
+			end
+		end
+
+		local now = os.clock()
+		local isDashing = now < dashEndTime
+		local sprinting = touchSprinting
+			or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsGamepadButtonDown(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonL3)
+
+		local effectiveDir = targetDir
+		local speed = CONFIG.FlySpeed * (sprinting and CONFIG.SprintMultiplier or 1)
+
+		if isDashing then
+			speed = CONFIG.DashSpeed
+			if effectiveDir.Magnitude < 0.05 and activeCam then
+				effectiveDir = activeCam.CFrame.LookVector
+			end
+		end
+
+		local targetVelocity = effectiveDir * speed
+
+		if not braking and effectiveDir.Magnitude < 0.05 then
+			hoverTime += dt
+			targetVelocity += Vector3.new(0, math.sin(hoverTime * 2.6) * 1.15, 0)
+		else
+			hoverTime = 0
+		end
+
+		local accelRate = if braking then CONFIG.BrakeDeceleration elseif isDashing then 28 else CONFIG.Acceleration
+		local alpha = math.clamp(1 - math.exp(-accelRate * dt), 0, 1)
+		moveInput = moveInput:Lerp(targetVelocity, alpha)
+		linearVelocity.VectorVelocity = moveInput
+
+		local currentSpeed = moveInput.Magnitude
+
+		if activeCam then
+			if baseFOV == nil then
+				baseFOV = activeCam.FieldOfView
+			end
+			local boost = if isDashing then (CONFIG.SprintFOVBoost * 1.5)
+				elseif (sprinting and effectiveDir.Magnitude > 0.1) then CONFIG.SprintFOVBoost
+				else 0
+			local desiredFOV = baseFOV + boost
+			activeCam.FieldOfView += (desiredFOV - activeCam.FieldOfView) * math.clamp(8 * dt, 0, 1)
+		end
+
+		local targetRoll = math.rad(-strafeAmount * CONFIG.MaxCameraRollDeg)
+		currentCameraRoll += (targetRoll - currentCameraRoll) * math.clamp(8 * dt, 0, 1)
+
+		if windParticles then
+			windParticles.Rate = math.clamp(12 + (currentSpeed * 0.45), 10, 90)
+		end
+		if windSound then
+			local speedRatio = math.clamp(currentSpeed / math.max(1, CONFIG.FlySpeed * CONFIG.SprintMultiplier), 0, 1.5)
+			windSound.Volume = 0.04 + (speedRatio * 0.28)
+			windSound.PlaybackSpeed = 0.8 + (speedRatio * 0.55)
+		end
+
+		if dashChipBtn then
+			local remaining = math.max(0, CONFIG.DashCooldown - (now - lastDashTime))
+			if remaining > 0 then
+				dashChipBtn.Text = string.format("DASH %.1fs", remaining)
+				dashChipBtn.BackgroundColor3 = Color3.fromRGB(39, 46, 61)
+			else
+				dashChipBtn.Text = "⚡ DASH"
+				dashChipBtn.BackgroundColor3 = getTheme().primary
+			end
+		end
+
+		if telemetryLabel and player.Character then
+			local alt = getAltitudeAboveGround(player.Character, currentRoot)
+			telemetryLabel.Text = string.format("SPD: %d st/s   |   ALT: %d st", math.floor(currentSpeed + 0.5), math.floor(alt + 0.5))
+		end
+
+		local desiredCFrame = computeFlightOrientation(currentRoot.Position, effectiveDir, strafeAmount, activeCam)
+		if desiredCFrame then
+			local rotAlpha = math.clamp((effectiveDir.Magnitude > 0.05 and 10 or 8) * dt, 0, 1)
+			alignOrientation.CFrame = alignOrientation.CFrame:Lerp(desiredCFrame, rotAlpha)
+		end
+	end)
+end
+
+-- Wall/Ground-Safe Orbit Position Helper
+local function getSafeOrbitPosition(targetChar: Model, targetRoot: BasePart, desiredPos: Vector3): Vector3
+	local excludeList: { Instance } = { targetChar }
+	if player.Character then
+		table.insert(excludeList, player.Character)
+	end
+	orbitRayParams.FilterDescendantsInstances = excludeList
+
+	local origin = targetRoot.Position
+	local delta = desiredPos - origin
+	if delta.Magnitude < 0.1 then
+		return desiredPos
+	end
+
+	local hit = workspace:Raycast(origin, delta, orbitRayParams)
+	if hit then
+		return hit.Position - (delta.Unit * 2.5)
+	end
+	return desiredPos
+end
+
+-- Passive Survivability & Wall-Safe Target Orbit Loop
+local function startPassiveSurvivabilityLoop()
+	if passiveUtilityConn then
+		passiveUtilityConn:Disconnect()
+	end
+
+	waterRayParams.FilterDescendantsInstances = { workspace.Terrain }
+
+	passiveUtilityConn = RunService.Heartbeat:Connect(function(dt: number)
+		local hum, rootPart = getCharacterParts(player.Character)
+		if not hum or not rootPart or hum.Health <= 0 then
+			return
+		end
+
+		-- 1. Auto Low-HP Escape
+		if CONFIG.AutoEscapeEnabled then
+			local hpPct = (hum.Health / math.max(1, hum.MaxHealth)) * 100
+			if hpPct <= CONFIG.EscapeHPPercent and not escapeTriggered then
+				escapeTriggered = true
+				comboRunning = false
+				if not flying then
+					startFlight()
+				end
+				local escapePos = rootPart.Position + Vector3.new(0, 180, 0)
+				rootPart.CFrame = CFrame.new(escapePos)
+				moveInput = Vector3.new(0, 60, 0)
+				if alignOrientation then
+					alignOrientation.CFrame = CFrame.new(escapePos)
+				end
+			elseif hpPct > (CONFIG.EscapeHPPercent + 15) then
+				escapeTriggered = false
+			end
+		end
+
+		-- 2. Wall-Safe Target Orbit / Strafe Assist when Aiming or Comboing
+		local activeTarget = manualPriorityTarget or lockedTargetPlayer
+		if CONFIG.OrbitTarget and (aimbotActive or comboRunning) and activeTarget and activeTarget.Character then
+			local targetRoot = activeTarget.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if targetRoot and (targetRoot.Position - rootPart.Position).Magnitude <= 140 then
+				orbitAngle = (orbitAngle + (CONFIG.OrbitAngularSpeed * dt)) % (math.pi * 2)
+				local rawOffset = Vector3.new(math.cos(orbitAngle) * CONFIG.OrbitRadius, 4, math.sin(orbitAngle) * CONFIG.OrbitRadius)
+				local safePos = getSafeOrbitPosition(activeTarget.Character, targetRoot, targetRoot.Position + rawOffset)
+				local lookAtTarget = CFrame.lookAt(safePos, Vector3.new(targetRoot.Position.X, safePos.Y, targetRoot.Position.Z))
+				rootPart.CFrame = rootPart.CFrame:Lerp(lookAtTarget, math.clamp(12 * dt, 0, 1))
+				if alignOrientation then
+					alignOrientation.CFrame = lookAtTarget
+				end
+			end
+		end
+
+		-- 3. Anti-Knockback / Velocity Stabilizer
+		if CONFIG.AntiKnockback and not flying then
+			local vel = rootPart.AssemblyLinearVelocity
+			if vel.Magnitude > CONFIG.MaxKnockbackSpeed then
+				rootPart.AssemblyLinearVelocity = vel.Unit * (CONFIG.MaxKnockbackSpeed * 0.45)
+			end
+		end
+
+		-- 4. Walk-on-Water / Sea-Surface Hover
+		if CONFIG.WalkOnWater and not flying then
+			local waterHit = workspace:Raycast(rootPart.Position + Vector3.new(0, 3, 0), Vector3.new(0, -8.5, 0), waterRayParams)
+			if waterHit and waterHit.Material == Enum.Material.Water then
+				local minAllowedY = waterHit.Position.Y + 2.85
+				if rootPart.Position.Y < minAllowedY then
+					local vel = rootPart.AssemblyLinearVelocity
+					rootPart.CFrame = CFrame.new(rootPart.Position.X, minAllowedY, rootPart.Position.Z) * rootPart.CFrame.Rotation
+					if vel.Y < 0 then
+						rootPart.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+					end
+				end
+			end
+		end
+
+		-- 5. Auto-Ken (Observation Haki) Cooldown Re-Trigger
+		if CONFIG.AutoKenEnabled and (isAimingEngaged() or comboRunning) then
+			local now = os.clock()
+			if (now - lastAutoKenTime) >= 8.5 then
+				lastAutoKenTime = now
+				toggleInstinctKen()
+			end
+		end
+	end)
+end
+
+local function toggleFlight()
+	local now = os.clock()
+	if (now - lastToggleTime) < CONFIG.ToggleDebounceSeconds then
+		return
+	end
+	lastToggleTime = now
+
+	if flying then
+		stopFlight()
+	else
+		startFlight()
+	end
+end
+
+local function teleportToWaypoint(slot: number)
+	local targetCF = waypoints[slot]
+	if not targetCF then
+		return
+	end
+	local _, rootPart = getCharacterParts(player.Character)
+	if not rootPart then
+		return
+	end
+	if not flying then
+		startFlight()
+	end
+	moveInput = Vector3.zero
+	rootPart.CFrame = targetCF
+	if alignOrientation then
+		alignOrientation.CFrame = targetCF
+	end
+end
+
+-- Unified RenderStep bound after Roblox's CameraModule (with 0.10s ESP throttle)
+local function bindUnifiedCameraLoop()
+	pcall(function()
+		RunService:UnbindFromRenderStep(CAMERA_STEP_BIND)
+	end)
+
+	RunService:BindToRenderStep(CAMERA_STEP_BIND, Enum.RenderPriority.Camera.Value + 1, function(dt: number)
+		local cam = getActiveCamera()
+		local engaged = isAimingEngaged()
+		local now = os.clock()
+
+		if cam and (now - lastESPUpdateTime) >= 0.10 then
+			lastESPUpdateTime = now
+			updateESPSystem(cam)
+		end
+
+		if fovCircleFrame then
+			fovCircleFrame.Visible = AIM_CONFIG.ShowFOVCircle and engaged
+			local diameter = AIM_CONFIG.AimFOVRadius * 2
+			fovCircleFrame.Size = UDim2.fromOffset(diameter, diameter)
+			if fovCircleStroke then
+				fovCircleStroke.Color = getTheme().bright
+			end
+		end
+
+		if cam and engaged then
+			local bestPlayer, bestPart, bestHum, bestScreenPos, worldDist = findBestAimTarget(cam)
+			lockedTargetPlayer = bestPlayer
+
+			if bestPlayer and bestPart and bestHum and bestScreenPos then
+				if lockIndicatorFrame then
+					lockIndicatorFrame.Visible = true
+					lockIndicatorFrame.Position = UDim2.fromOffset(bestScreenPos.X, bestScreenPos.Y)
+				end
+				if lockInfoLabel then
+					lockInfoLabel.Text = string.format(
+						"%s\n%d HP • %d st",
+						bestPlayer.DisplayName,
+						math.ceil(bestHum.Health),
+						math.floor(worldDist + 0.5)
+					)
+				end
+
+				local aimPoint = bestPart.Position + (bestPart.AssemblyLinearVelocity * AIM_CONFIG.LeadPrediction)
+				local desiredLookCF = CFrame.lookAt(cam.CFrame.Position, aimPoint)
+				local alpha = math.clamp(1 - math.exp(-AIM_CONFIG.Smoothness * dt), 0, 1)
+				cam.CFrame = cam.CFrame:Lerp(desiredLookCF, alpha)
+			else
+				if lockIndicatorFrame then
+					lockIndicatorFrame.Visible = false
+				end
+			end
+		else
+			lockedTargetPlayer = nil
+			if lockIndicatorFrame then
+				lockIndicatorFrame.Visible = false
+			end
+		end
+
+		if flying and cam and math.abs(currentCameraRoll) > 1e-4 then
+			cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, currentCameraRoll)
+		end
+	end)
+end
+
+-- Screen-clamped draggable helper
+local function makeDraggableInteractive(
+	dragHandle: GuiObject,
+	targetFrame: GuiObject,
+	callbacks: {
+		onSingleTap: (() -> ())?,
+		onDoubleTapOrLongPress: (() -> ())?,
+		onPositionChanged: ((UDim2) -> ())?,
+	}
+)
+	local activeInput: InputObject? = nil
+	local dragStart = Vector2.zero
+	local startAbsPos = Vector2.zero
+	local movedPastThreshold = false
+	local longPressTriggered = false
+	local pressGeneration = 0
+	local lastTapTime = 0
+	local changedConn: RBXScriptConnection? = nil
+	local endedConn: RBXScriptConnection? = nil
+
+	local function disconnectDragListeners()
+		if changedConn then
+			changedConn:Disconnect()
+			changedConn = nil
+		end
+		if endedConn then
+			endedConn:Disconnect()
+			endedConn = nil
+		end
+	end
+
+	dragHandle.InputBegan:Connect(function(input: InputObject)
+		if activeInput ~= nil then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			activeInput = input
+			dragStart = Vector2.new(input.Position.X, input.Position.Y)
+			startAbsPos = targetFrame.AbsolutePosition
+			movedPastThreshold = false
+			longPressTriggered = false
+			pressGeneration += 1
+			local currentGen = pressGeneration
+
+			if callbacks.onDoubleTapOrLongPress then
+				task.delay(CONFIG.LongPressSeconds, function()
+					if activeInput == input and pressGeneration == currentGen and not movedPastThreshold and not longPressTriggered then
+						longPressTriggered = true
+						callbacks.onDoubleTapOrLongPress()
+					end
+				end)
+			end
+
+			disconnectDragListeners()
+
+			changedConn = UserInputService.InputChanged:Connect(function(changedInput: InputObject)
+				if changedInput ~= activeInput then
+					return
+				end
+				if changedInput.UserInputType == Enum.UserInputType.MouseMovement or changedInput.UserInputType == Enum.UserInputType.Touch then
+					local delta = Vector2.new(changedInput.Position.X, changedInput.Position.Y) - dragStart
+					if delta.Magnitude >= CONFIG.DragThresholdPixels then
+						movedPastThreshold = true
+					end
+					if movedPastThreshold then
+						local cam = getActiveCamera()
+						local viewport = if cam then cam.ViewportSize else Vector2.new(1920, 1080)
+						local frameSize = targetFrame.AbsoluteSize
+						local clampedX = math.clamp(startAbsPos.X + delta.X, 4, math.max(4, viewport.X - frameSize.X - 4))
+						local clampedY = math.clamp(startAbsPos.Y + delta.Y, 4, math.max(4, viewport.Y - frameSize.Y - 4))
+
+						local newPos = UDim2.fromOffset(clampedX, clampedY)
+						targetFrame.Position = newPos
+						if callbacks.onPositionChanged then
+							callbacks.onPositionChanged(newPos)
+						end
+					end
+				end
+			end)
+
+			endedConn = UserInputService.InputEnded:Connect(function(endedInput: InputObject)
+				if endedInput == activeInput then
+					local wasCleanTap = (not movedPastThreshold) and (not longPressTriggered)
+					activeInput = nil
+					movedPastThreshold = false
+					disconnectDragListeners()
+
+					if wasCleanTap then
+						local now = os.clock()
+						if callbacks.onDoubleTapOrLongPress and (now - lastTapTime) <= CONFIG.DoubleTapSeconds then
+							lastTapTime = 0
+							callbacks.onDoubleTapOrLongPress()
+						else
+							lastTapTime = now
+							if callbacks.onSingleTap then
+								callbacks.onSingleTap()
+							end
+						end
+					end
+				end
+			end)
+		end
+	end)
+end
+
+local function styleBox(guiObject: GuiObject, bgColor: Color3, radius: number, strokeAlpha: number?)
+	guiObject.BackgroundColor3 = bgColor
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = guiObject
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Transparency = strokeAlpha or 0.85
+	stroke.Thickness = 1
+	stroke.Parent = guiObject
+end
+
+local function buildMovableLogo(parent: GuiObject)
+	local theme = getTheme()
+	local size = CONFIG.LogoSize
+	local container = Instance.new("Frame")
+	container.Name = "CustomMovableLogo"
+	container.Size = UDim2.fromOffset(size, size)
+	container.Position = savedLogoPosition
+	container.BackgroundColor3 = Color3.fromRGB(16, 20, 29)
+	container.BackgroundTransparency = 0.08
+	container.Parent = parent
+	logoContainer = container
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = container
+
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 41, 59)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 23, 42)),
+	})
+	gradient.Rotation = 135
+	gradient.Parent = container
+
+	local ring = Instance.new("UIStroke")
+	ring.Color = theme.primary
+	ring.Thickness = 2.5
+	ring.Transparency = 0.15
+	ring.Parent = container
+	logoRingStroke = ring
+
+	if CONFIG.LogoImageId ~= "" then
+		local img = Instance.new("ImageLabel")
+		img.Name = "LogoImage"
+		img.Size = UDim2.fromScale(0.76, 0.76)
+		img.Position = UDim2.fromScale(0.12, 0.12)
+		img.BackgroundTransparency = 1
+		img.Image = CONFIG.LogoImageId
+		img.ScaleType = Enum.ScaleType.Fit
+		img.Parent = container
+	else
+		local wingIcon = Instance.new("TextLabel")
+		wingIcon.Name = "LogoSymbol"
+		wingIcon.Size = UDim2.new(1, -6, 0.52, 0)
+		wingIcon.Position = UDim2.new(0, 3, 0.14, 0)
+		wingIcon.BackgroundTransparency = 1
+		wingIcon.Text = CONFIG.LogoTitle
+		wingIcon.Font = Enum.Font.GothamBlack
+		wingIcon.TextScaled = true
+		wingIcon.TextColor3 = Color3.fromRGB(248, 250, 252)
+		wingIcon.Parent = container
+
+		local subLbl = Instance.new("TextLabel")
+		subLbl.Name = "LogoSubtext"
+		subLbl.Size = UDim2.new(1, 0, 0.26, 0)
+		subLbl.Position = UDim2.fromScale(0, 0.62)
+		subLbl.BackgroundTransparency = 1
+		subLbl.Text = CONFIG.LogoSubtitle
+		subLbl.Font = Enum.Font.GothamBold
+		subLbl.TextSize = 9
+		subLbl.TextColor3 = theme.bright
+		subLbl.Parent = container
+		logoSubLabel = subLbl
+	end
+
+	local dot = Instance.new("Frame")
+	dot.Name = "StatusDot"
+	dot.Size = UDim2.fromOffset(12, 12)
+	dot.Position = UDim2.new(1, -14, 1, -14)
+	dot.BackgroundColor3 = Color3.fromRGB(148, 163, 184)
+	dot.Parent = container
+	logoStatusDot = dot
+
+	local dotCorner = Instance.new("UICorner")
+	dotCorner.CornerRadius = UDim.new(1, 0)
+	dotCorner.Parent = dot
+
+	local dotStroke = Instance.new("UIStroke")
+	dotStroke.Color = Color3.fromRGB(15, 23, 42)
+	dotStroke.Thickness = 2
+	dotStroke.Parent = dot
+
+	local hitArea = Instance.new("TextButton")
+	hitArea.Name = "LogoDragTapArea"
+	hitArea.Size = UDim2.fromScale(1, 1)
+	hitArea.BackgroundTransparency = 1
+	hitArea.Text = ""
+	hitArea.AutoButtonColor = false
+	hitArea.Parent = container
+
+	makeDraggableInteractive(hitArea, container, {
+		onSingleTap = toggleFlight,
+		onDoubleTapOrLongPress = function()
+			menuOpen = not menuOpen
+			syncAllUI()
+		end,
+		onPositionChanged = function(newPos: UDim2)
+			savedLogoPosition = newPos
+			saveSessionSettings()
+		end,
+	})
+end
+
+local function buildAimOverlay(parent: GuiObject)
+	local fovFrame = Instance.new("Frame")
+	fovFrame.Name = "AimFOVCircle"
+	fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	fovFrame.Position = UDim2.fromScale(0.5, 0.5)
+	fovFrame.Size = UDim2.fromOffset(AIM_CONFIG.AimFOVRadius * 2, AIM_CONFIG.AimFOVRadius * 2)
+	fovFrame.BackgroundTransparency = 1
+	fovFrame.Visible = false
+	fovFrame.Parent = parent
+	fovCircleFrame = fovFrame
+
+	local fovCorner = Instance.new("UICorner")
+	fovCorner.CornerRadius = UDim.new(1, 0)
+	fovCorner.Parent = fovFrame
+
+	local fovStroke = Instance.new("UIStroke")
+	fovStroke.Color = getTheme().bright
+	fovStroke.Thickness = 1.5
+	fovStroke.Transparency = 0.35
+	fovStroke.Parent = fovFrame
+	fovCircleStroke = fovStroke
+
+	local lockRing = Instance.new("Frame")
+	lockRing.Name = "TargetLockIndicator"
+	lockRing.AnchorPoint = Vector2.new(0.5, 0.5)
+	lockRing.Size = UDim2.fromOffset(24, 24)
+	lockRing.BackgroundTransparency = 1
+	lockRing.Visible = false
+	lockRing.Parent = parent
+	lockIndicatorFrame = lockRing
+
+	local lockCorner = Instance.new("UICorner")
+	lockCorner.CornerRadius = UDim.new(1, 0)
+	lockCorner.Parent = lockRing
+
+	local lockStroke = Instance.new("UIStroke")
+	lockStroke.Color = Color3.fromRGB(239, 68, 68)
+	lockStroke.Thickness = 2
+	lockStroke.Parent = lockRing
+
+	local infoLbl = Instance.new("TextLabel")
+	infoLbl.Name = "TargetLockInfo"
+	infoLbl.Size = UDim2.fromOffset(150, 30)
+	infoLbl.AnchorPoint = Vector2.new(0.5, 0)
+	infoLbl.Position = UDim2.new(0.5, 0, 1, 4)
+	infoLbl.BackgroundTransparency = 1
+	infoLbl.Font = Enum.Font.GothamBold
+	infoLbl.TextSize = 11
+	infoLbl.TextColor3 = Color3.fromRGB(254, 202, 202)
+	infoLbl.TextStrokeTransparency = 0.35
+	infoLbl.Text = ""
+	infoLbl.Parent = lockRing
+	lockInfoLabel = infoLbl
+end
+
+local function watchCameraViewport()
+	if viewportConn then
+		viewportConn:Disconnect()
+		viewportConn = nil
+	end
+	local cam = getActiveCamera()
+	if cam then
+		viewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(clampAllDraggableUI)
+	end
+end
+
+local function buildCustomMenuUI()
+	logoContainer = nil
+	logoRingStroke = nil
+	logoSubLabel = nil
+	logoStatusDot = nil
+	flyPillBtn = nil
+	menuToggleBtn = nil
+	menuFrame = nil
+	telemetryFrame = nil
+	telemetryLabel = nil
+	touchPadFrame = nil
+	stripDragHandle = nil
+	collapseStripBtn = nil
+	sprintChipBtn = nil
+	dashChipBtn = nil
+	aimChipBtn = nil
+	comboChipBtn = nil
+	kenChipBtn = nil
+	raceChipBtn = nil
+	fovCircleFrame = nil
+	fovCircleStroke = nil
+	lockIndicatorFrame = nil
+	lockInfoLabel = nil
+
+	local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
+	local existing = playerGui:FindFirstChild("SiddhantPvPHubGui")
+	if existing then
+		existing:Destroy()
+	end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "SiddhantPvPHubGui"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	gui.Parent = playerGui
+	rootScreenGui = gui
+
+	buildAimOverlay(gui)
+	buildMovableLogo(gui)
+
+	-- Telemetry Pill
+	local telem = Instance.new("Frame")
+	telem.Name = "FlightTelemetryHUD"
+	telem.Size = UDim2.fromOffset(214, 28)
+	telem.AnchorPoint = Vector2.new(0.5, 0)
+	telem.Position = UDim2.new(0.5, 0, 0, 52)
+	telem.BackgroundTransparency = 0.2
+	telem.Visible = false
+	telem.Parent = gui
+	styleBox(telem, Color3.fromRGB(15, 20, 29), 9, 0.82)
+	telemetryFrame = telem
+
+	local telemLbl = Instance.new("TextLabel")
+	telemLbl.Size = UDim2.fromScale(1, 1)
+	telemLbl.BackgroundTransparency = 1
+	telemLbl.Text = "SPD: 0 st/s   |   ALT: 0 st"
+	telemLbl.Font = Enum.Font.GothamBold
+	telemLbl.TextSize = 11
+	telemLbl.TextColor3 = Color3.fromRGB(226, 232, 240)
+	telemLbl.Parent = telem
+	telemetryLabel = telemLbl
+
+	-- Top-right bar
+	local topBar = Instance.new("Frame")
+	topBar.Name = "TopControlsBar"
+	topBar.Size = UDim2.fromOffset(188, 38)
+	topBar.Position = UDim2.new(1, -204, 0, 106)
+	topBar.BackgroundTransparency = 1
+	topBar.Parent = gui
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, 8)
+	layout.Parent = topBar
+
+	local pill = Instance.new("TextButton")
+	pill.Name = "FlyPillButton"
+	pill.Size = UDim2.fromOffset(106, 36)
+	pill.Text = "✈ FLY: OFF"
+	pill.Font = Enum.Font.GothamBold
+	pill.TextSize = 13
+	pill.TextColor3 = Color3.fromRGB(255, 255, 255)
+	pill.AutoButtonColor = true
+	pill.Parent = topBar
+	styleBox(pill, Color3.fromRGB(24, 27, 34), 10, 0.8)
+	flyPillBtn = pill
+	pill.MouseButton1Click:Connect(toggleFlight)
+
+	local menuBtn = Instance.new("TextButton")
+	menuBtn.Name = "MenuToggleButton"
+	menuBtn.Size = UDim2.fromOffset(74, 36)
+	menuBtn.Text = "MENU"
+	menuBtn.Font = Enum.Font.GothamBold
+	menuBtn.TextSize = 12
+	menuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	menuBtn.AutoButtonColor = true
+	menuBtn.Parent = topBar
+	styleBox(menuBtn, Color3.fromRGB(24, 27, 34), 10, 0.8)
+	menuToggleBtn = menuBtn
+
+	menuBtn.MouseButton1Click:Connect(function()
+		menuOpen = not menuOpen
+		syncAllUI()
+	end)
+
+	-- Compact Tabbed Control Menu (Combat | Movement | Visuals)
+	local panel = Instance.new("Frame")
+	panel.Name = "FlightMenuPanel"
+	panel.Size = UDim2.fromOffset(292, 332)
+	panel.Position = savedMenuPosition
+	panel.BackgroundTransparency = 0.05
+	panel.Visible = false
+	panel.Parent = gui
+	styleBox(panel, Color3.fromRGB(17, 20, 27), 14, 0.78)
+	menuFrame = panel
+
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.Size = UDim2.new(1, 0, 0, 40)
+	header.BackgroundColor3 = Color3.fromRGB(26, 31, 41)
+	header.BorderSizePixel = 0
+	header.Parent = panel
+	styleBox(header, Color3.fromRGB(26, 31, 41), 14, 0.88)
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -44, 1, 0)
+	title.Position = UDim2.fromOffset(14, 0)
+	title.BackgroundTransparency = 1
+	title.Text = "⠿ SIDDHANT PVP HUB"
+	title.Font = Enum.Font.GothamBold
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextSize = 13
+	title.TextColor3 = Color3.fromRGB(241, 245, 249)
+	title.Parent = header
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.fromOffset(26, 26)
+	closeBtn.Position = UDim2.new(1, -34, 0.5, -13)
+	closeBtn.Text = "✕"
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.TextSize = 12
+	closeBtn.TextColor3 = Color3.fromRGB(226, 232, 240)
+	closeBtn.Parent = header
+	styleBox(closeBtn, Color3.fromRGB(39, 46, 61), 7, 0.85)
+	closeBtn.MouseButton1Click:Connect(function()
+		menuOpen = false
+		syncAllUI()
+	end)
+
+	makeDraggableInteractive(header, panel, {
+		onPositionChanged = function(newPos: UDim2)
+			savedMenuPosition = newPos
+			saveSessionSettings()
+		end,
+	})
+
+	-- Tab Bar
+	local tabBar = Instance.new("Frame")
+	tabBar.Name = "TabBar"
+	tabBar.Size = UDim2.new(1, -24, 0, 28)
+	tabBar.Position = UDim2.fromOffset(12, 46)
+	tabBar.BackgroundTransparency = 1
+	tabBar.Parent = panel
+
+	local tabNames = { "Combat", "Movement", "Visuals" }
+	local tabButtons: { [string]: TextButton } = {}
+
+	for idx, tabName in ipairs(tabNames) do
+		local tBtn = Instance.new("TextButton")
+		tBtn.Size = UDim2.new(0.32, 0, 1, 0)
+		tBtn.Position = UDim2.new((idx - 1) * 0.34, 0, 0, 0)
+		tBtn.Text = tabName
+		tBtn.Font = Enum.Font.GothamBold
+		tBtn.TextSize = 11
+		tBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		tBtn.Parent = tabBar
+		styleBox(tBtn, Color3.fromRGB(24, 28, 37), 7, 0.85)
+		tabButtons[tabName] = tBtn
+
+		tBtn.MouseButton1Click:Connect(function()
+			CONFIG.ActiveTab = tabName
+			saveSessionSettings()
+			syncAllUI()
+		end)
+	end
+
+	-- Tab Content Containers
+	local pages: { [string]: Frame } = {}
+	for _, tabName in ipairs(tabNames) do
+		local page = Instance.new("Frame")
+		page.Name = tabName .. "Page"
+		page.Size = UDim2.new(1, -24, 1, -86)
+		page.Position = UDim2.fromOffset(12, 80)
+		page.BackgroundTransparency = 1
+		page.Visible = (CONFIG.ActiveTab == tabName)
+		page.Parent = panel
+
+		local pageLayout = Instance.new("UIListLayout")
+		pageLayout.Padding = UDim.new(0, 7)
+		pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		pageLayout.Parent = page
+
+		pages[tabName] = page
+	end
+
+	local function createStepperRow(
+		parentPage: Frame,
+		order: number,
+		labelText: string,
+		formatValue: () -> string,
+		onMinus: () -> (),
+		onPlus: () -> ()
+	)
+		local row = Instance.new("Frame")
+		row.LayoutOrder = order
+		row.Size = UDim2.new(1, 0, 0, 34)
+		row.BackgroundColor3 = Color3.fromRGB(24, 28, 37)
+		row.Parent = parentPage
+		styleBox(row, Color3.fromRGB(24, 28, 37), 9, 0.88)
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(0.52, -8, 1, 0)
+		lbl.Position = UDim2.fromOffset(10, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = labelText
+		lbl.Font = Enum.Font.GothamSemibold
+		lbl.TextSize = 12
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.TextColor3 = Color3.fromRGB(226, 232, 240)
+		lbl.Parent = row
+
+		local minusBtn = Instance.new("TextButton")
+		minusBtn.Size = UDim2.fromOffset(26, 22)
+		minusBtn.Position = UDim2.new(1, -96, 0.5, -11)
+		minusBtn.Text = "-"
+		minusBtn.Font = Enum.Font.GothamBold
+		minusBtn.TextSize = 15
+		minusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		minusBtn.Parent = row
+		styleBox(minusBtn, Color3.fromRGB(39, 47, 63), 6, 0.85)
+
+		local valLbl = Instance.new("TextLabel")
+		valLbl.Size = UDim2.fromOffset(38, 22)
+		valLbl.Position = UDim2.new(1, -66, 0.5, -11)
+		valLbl.BackgroundTransparency = 1
+		valLbl.Font = Enum.Font.GothamBold
+		valLbl.TextSize = 12
+		valLbl.TextColor3 = getTheme().bright
+		valLbl.Parent = row
+
+		local plusBtn = Instance.new("TextButton")
+		plusBtn.Size = UDim2.fromOffset(26, 22)
+		plusBtn.Position = UDim2.new(1, -30, 0.5, -11)
+		plusBtn.Text = "+"
+		plusBtn.Font = Enum.Font.GothamBold
+		plusBtn.TextSize = 15
+		plusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		plusBtn.Parent = row
+		styleBox(plusBtn, Color3.fromRGB(39, 47, 63), 6, 0.85)
+
+		local function refreshVal()
+			valLbl.Text = formatValue()
+			valLbl.TextColor3 = getTheme().bright
+		end
+
+		minusBtn.MouseButton1Click:Connect(function()
+			onMinus()
+			saveSessionSettings()
+			refreshVal()
+		end)
+
+		plusBtn.MouseButton1Click:Connect(function()
+			onPlus()
+			saveSessionSettings()
+			refreshVal()
+		end)
+
+		refreshVal()
+		return refreshVal
+	end
+
+	local function createWaypointRow(parentPage: Frame, order: number, slot: number)
+		local row = Instance.new("Frame")
+		row.LayoutOrder = order
+		row.Size = UDim2.new(1, 0, 0, 32)
+		row.BackgroundColor3 = Color3.fromRGB(24, 28, 37)
+		row.Parent = parentPage
+		styleBox(row, Color3.fromRGB(24, 28, 37), 9, 0.88)
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(0.42, 0, 1, 0)
+		lbl.Position = UDim2.fromOffset(10, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = "Waypoint " .. tostring(slot)
+		lbl.Font = Enum.Font.GothamSemibold
+		lbl.TextSize = 12
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.TextColor3 = Color3.fromRGB(226, 232, 240)
+		lbl.Parent = row
+
+		local saveBtn = Instance.new("TextButton")
+		saveBtn.Size = UDim2.fromOffset(44, 22)
+		saveBtn.Position = UDim2.new(1, -138, 0.5, -11)
+		saveBtn.Text = "SAVE"
+		saveBtn.Font = Enum.Font.GothamBold
+		saveBtn.TextSize = 10
+		saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		saveBtn.Parent = row
+		styleBox(saveBtn, Color3.fromRGB(39, 47, 63), 6, 0.85)
+
+		local goBtn = Instance.new("TextButton")
+		goBtn.Size = UDim2.fromOffset(46, 22)
+		goBtn.Position = UDim2.new(1, -90, 0.5, -11)
+		goBtn.Text = "EMPTY"
+		goBtn.Font = Enum.Font.GothamBold
+		goBtn.TextSize = 10
+		goBtn.TextColor3 = Color3.fromRGB(148, 163, 184)
+		goBtn.Parent = row
+		styleBox(goBtn, Color3.fromRGB(30, 36, 48), 6, 0.85)
+
+		local clrBtn = Instance.new("TextButton")
+		clrBtn.Size = UDim2.fromOffset(34, 22)
+		clrBtn.Position = UDim2.new(1, -40, 0.5, -11)
+		clrBtn.Text = "CLR"
+		clrBtn.Font = Enum.Font.GothamBold
+		clrBtn.TextSize = 10
+		clrBtn.TextColor3 = Color3.fromRGB(203, 213, 225)
+		clrBtn.Parent = row
+		styleBox(clrBtn, Color3.fromRGB(51, 35, 42), 6, 0.85)
+
+		local function refreshWP()
+			if waypoints[slot] then
+				goBtn.Text = "GO ✈"
+				goBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+				goBtn.BackgroundColor3 = getTheme().primary
+				clrBtn.Visible = true
+			else
+				goBtn.Text = "EMPTY"
+				goBtn.TextColor3 = Color3.fromRGB(148, 163, 184)
+				goBtn.BackgroundColor3 = Color3.fromRGB(30, 36, 48)
+				clrBtn.Visible = false
+			end
+		end
+
+		saveBtn.MouseButton1Click:Connect(function()
+			local _, rootPart = getCharacterParts(player.Character)
+			if rootPart then
+				waypoints[slot] = rootPart.CFrame
+				saveSessionSettings()
+				refreshWP()
+			end
+		end)
+
+		goBtn.MouseButton1Click:Connect(function()
+			teleportToWaypoint(slot)
+		end)
+
+		clrBtn.MouseButton1Click:Connect(function()
+			waypoints[slot] = nil
+			saveSessionSettings()
+			refreshWP()
+		end)
+
+		refreshWP()
+		return refreshWP
+	end
+
+	-- === COMBAT TAB ===
+	local combatPage = pages["Combat"]
+	local refreshAimFOV = createStepperRow(combatPage, 1, "Aim FOV", function()
+		return tostring(AIM_CONFIG.AimFOVRadius)
+	end, function()
+		AIM_CONFIG.AimFOVRadius = math.max(50, AIM_CONFIG.AimFOVRadius - 25)
+	end, function()
+		AIM_CONFIG.AimFOVRadius = math.min(450, AIM_CONFIG.AimFOVRadius + 25)
+	end)
+
+	local presetBtn = Instance.new("TextButton")
+	presetBtn.LayoutOrder = 2
+	presetBtn.Size = UDim2.new(1, 0, 0, 30)
+	presetBtn.Text = "Combo Preset: Meta All-In"
+	presetBtn.Font = Enum.Font.GothamBold
+	presetBtn.TextSize = 11
+	presetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	presetBtn.Parent = combatPage
+	styleBox(presetBtn, Color3.fromRGB(24, 28, 37), 8, 0.85)
+	presetBtn.MouseButton1Click:Connect(function()
+		CONFIG.ComboPresetIndex = (CONFIG.ComboPresetIndex % #COMBO_PRESETS) + 1
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local lockRow = Instance.new("Frame")
+	lockRow.LayoutOrder = 3
+	lockRow.Size = UDim2.new(1, 0, 0, 30)
+	lockRow.BackgroundTransparency = 1
+	lockRow.Parent = combatPage
+
+	local targetLockBtn = Instance.new("TextButton")
+	targetLockBtn.Size = UDim2.new(0.76, 0, 1, 0)
+	targetLockBtn.Text = "Lock: Auto (FOV)"
+	targetLockBtn.Font = Enum.Font.GothamBold
+	targetLockBtn.TextSize = 11
+	targetLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	targetLockBtn.Parent = lockRow
+	styleBox(targetLockBtn, Color3.fromRGB(24, 28, 37), 8, 0.85)
+	targetLockBtn.MouseButton1Click:Connect(function()
+		cycleManualPriorityTarget()
+		syncAllUI()
+	end)
+
+	local clearLockBtn = Instance.new("TextButton")
+	clearLockBtn.Size = UDim2.new(0.22, 0, 1, 0)
+	clearLockBtn.Position = UDim2.new(0.78, 0, 0, 0)
+	clearLockBtn.Text = "CLR"
+	clearLockBtn.Font = Enum.Font.GothamBold
+	clearLockBtn.TextSize = 10
+	clearLockBtn.TextColor3 = Color3.fromRGB(226, 232, 240)
+	clearLockBtn.Parent = lockRow
+	styleBox(clearLockBtn, Color3.fromRGB(51, 35, 42), 8, 0.85)
+	clearLockBtn.MouseButton1Click:Connect(function()
+		manualPriorityTarget = nil
+		lockedTargetPlayer = nil
+		syncAllUI()
+	end)
+
+	local combatRow1 = Instance.new("Frame")
+	combatRow1.LayoutOrder = 4
+	combatRow1.Size = UDim2.new(1, 0, 0, 30)
+	combatRow1.BackgroundTransparency = 1
+	combatRow1.Parent = combatPage
+
+	local partBtn = Instance.new("TextButton")
+	partBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	partBtn.Text = "Aim: Head"
+	partBtn.Font = Enum.Font.GothamBold
+	partBtn.TextSize = 11
+	partBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	partBtn.Parent = combatRow1
+	styleBox(partBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	partBtn.MouseButton1Click:Connect(function()
+		AIM_CONFIG.TargetPartName = if AIM_CONFIG.TargetPartName == "Head" then "HumanoidRootPart" else "Head"
+		lockedTargetPlayer = nil
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local orbitBtn = Instance.new("TextButton")
+	orbitBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	orbitBtn.Position = UDim2.new(0.51, 0, 0, 0)
+	orbitBtn.Text = "Orbit Target: OFF"
+	orbitBtn.Font = Enum.Font.GothamBold
+	orbitBtn.TextSize = 11
+	orbitBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	orbitBtn.Parent = combatRow1
+	styleBox(orbitBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	orbitBtn.MouseButton1Click:Connect(function()
+		CONFIG.OrbitTarget = not CONFIG.OrbitTarget
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local combatRow2 = Instance.new("Frame")
+	combatRow2.LayoutOrder = 5
+	combatRow2.Size = UDim2.new(1, 0, 0, 30)
+	combatRow2.BackgroundTransparency = 1
+	combatRow2.Parent = combatPage
+
+	local auraBtn = Instance.new("TextButton")
+	auraBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	auraBtn.Text = "Auto-Aura: ON"
+	auraBtn.Font = Enum.Font.GothamBold
+	auraBtn.TextSize = 11
+	auraBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	auraBtn.Parent = combatRow2
+	styleBox(auraBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	auraBtn.MouseButton1Click:Connect(function()
+		CONFIG.AutoAuraEnabled = not CONFIG.AutoAuraEnabled
+		if CONFIG.AutoAuraEnabled then
+			activateBusoAura()
+		end
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local autoKenBtn = Instance.new("TextButton")
+	autoKenBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	autoKenBtn.Position = UDim2.new(0.51, 0, 0, 0)
+	autoKenBtn.Text = "Auto-Ken: OFF"
+	autoKenBtn.Font = Enum.Font.GothamBold
+	autoKenBtn.TextSize = 11
+	autoKenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	autoKenBtn.Parent = combatRow2
+	styleBox(autoKenBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	autoKenBtn.MouseButton1Click:Connect(function()
+		CONFIG.AutoKenEnabled = not CONFIG.AutoKenEnabled
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local combatRow3 = Instance.new("Frame")
+	combatRow3.LayoutOrder = 6
+	combatRow3.Size = UDim2.new(1, 0, 0, 30)
+	combatRow3.BackgroundTransparency = 1
+	combatRow3.Parent = combatPage
+
+	local antiKBBtn = Instance.new("TextButton")
+	antiKBBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	antiKBBtn.Text = "Anti-KB: ON"
+	antiKBBtn.Font = Enum.Font.GothamBold
+	antiKBBtn.TextSize = 11
+	antiKBBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	antiKBBtn.Parent = combatRow3
+	styleBox(antiKBBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	antiKBBtn.MouseButton1Click:Connect(function()
+		CONFIG.AntiKnockback = not CONFIG.AntiKnockback
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local escapeBtn = Instance.new("TextButton")
+	escapeBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	escapeBtn.Position = UDim2.new(0.51, 0, 0, 0)
+	escapeBtn.Text = "Low-HP Escape: OFF"
+	escapeBtn.Font = Enum.Font.GothamBold
+	escapeBtn.TextSize = 11
+	escapeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	escapeBtn.Parent = combatRow3
+	styleBox(escapeBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	escapeBtn.MouseButton1Click:Connect(function()
+		CONFIG.AutoEscapeEnabled = not CONFIG.AutoEscapeEnabled
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	-- === MOVEMENT TAB ===
+	local movePage = pages["Movement"]
+	local refreshSpeed = createStepperRow(movePage, 1, "Fly Speed", function()
+		return tostring(CONFIG.FlySpeed)
+	end, function()
+		CONFIG.FlySpeed = math.max(CONFIG.MinSpeed, CONFIG.FlySpeed - CONFIG.SpeedStep)
+	end, function()
+		CONFIG.FlySpeed = math.min(CONFIG.MaxSpeed, CONFIG.FlySpeed + CONFIG.SpeedStep)
+	end)
+
+	local refreshSprint = createStepperRow(movePage, 2, "Sprint Mult.", function()
+		return string.format("%.2fx", CONFIG.SprintMultiplier)
+	end, function()
+		CONFIG.SprintMultiplier = math.max(CONFIG.MinSprint, CONFIG.SprintMultiplier - CONFIG.SprintStep)
+	end, function()
+		CONFIG.SprintMultiplier = math.min(CONFIG.MaxSprint, CONFIG.SprintMultiplier + CONFIG.SprintStep)
+	end)
+
+	local moveToggleRow = Instance.new("Frame")
+	moveToggleRow.LayoutOrder = 3
+	moveToggleRow.Size = UDim2.new(1, 0, 0, 30)
+	moveToggleRow.BackgroundTransparency = 1
+	moveToggleRow.Parent = movePage
+
+	local noclipBtn = Instance.new("TextButton")
+	noclipBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	noclipBtn.Text = "Noclip: OFF"
+	noclipBtn.Font = Enum.Font.GothamBold
+	noclipBtn.TextSize = 11
+	noclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	noclipBtn.Parent = moveToggleRow
+	styleBox(noclipBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	noclipBtn.MouseButton1Click:Connect(function()
+		CONFIG.NoclipWhileFlying = not CONFIG.NoclipWhileFlying
+		setNoclipEnabled(flying and CONFIG.NoclipWhileFlying)
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local waterBtn = Instance.new("TextButton")
+	waterBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	waterBtn.Position = UDim2.new(0.51, 0, 0, 0)
+	waterBtn.Text = "Water Walk: ON"
+	waterBtn.Font = Enum.Font.GothamBold
+	waterBtn.TextSize = 11
+	waterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	waterBtn.Parent = moveToggleRow
+	styleBox(waterBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	waterBtn.MouseButton1Click:Connect(function()
+		CONFIG.WalkOnWater = not CONFIG.WalkOnWater
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local moveToggleRow2 = Instance.new("Frame")
+	moveToggleRow2.LayoutOrder = 4
+	moveToggleRow2.Size = UDim2.new(1, 0, 0, 30)
+	moveToggleRow2.BackgroundTransparency = 1
+	moveToggleRow2.Parent = movePage
+
+	local infJumpBtn = Instance.new("TextButton")
+	infJumpBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	infJumpBtn.Text = "Inf Jump: ON"
+	infJumpBtn.Font = Enum.Font.GothamBold
+	infJumpBtn.TextSize = 11
+	infJumpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	infJumpBtn.Parent = moveToggleRow2
+	styleBox(infJumpBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	infJumpBtn.MouseButton1Click:Connect(function()
+		CONFIG.InfiniteAirJump = not CONFIG.InfiniteAirJump
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local afkBtn = Instance.new("TextButton")
+	afkBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	afkBtn.Position = UDim2.new(0.51, 0, 0, 0)
+	afkBtn.Text = "Anti-AFK: ON"
+	afkBtn.Font = Enum.Font.GothamBold
+	afkBtn.TextSize = 11
+	afkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	afkBtn.Parent = moveToggleRow2
+	styleBox(afkBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	afkBtn.MouseButton1Click:Connect(function()
+		CONFIG.AntiAFK = not CONFIG.AntiAFK
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local refreshWP1 = createWaypointRow(movePage, 5, 1)
+	local refreshWP2 = createWaypointRow(movePage, 6, 2)
+
+	-- === VISUALS & SERVER TAB ===
+	local visPage = pages["Visuals"]
+
+	local visRow1 = Instance.new("Frame")
+	visRow1.LayoutOrder = 1
+	visRow1.Size = UDim2.new(1, 0, 0, 32)
+	visRow1.BackgroundTransparency = 1
+	visRow1.Parent = visPage
+
+	local espBtn = Instance.new("TextButton")
+	espBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	espBtn.Text = "ESP & HP: ON"
+	espBtn.Font = Enum.Font.GothamBold
+	espBtn.TextSize = 11
+	espBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	espBtn.Parent = visRow1
+	styleBox(espBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	espBtn.MouseButton1Click:Connect(function()
+		CONFIG.ESPEnabled = not CONFIG.ESPEnabled
+		if not CONFIG.ESPEnabled then
+			clearAllESP()
+		end
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local tapLockBtn = Instance.new("TextButton")
+	tapLockBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	tapLockBtn.Position = UDim2.new(0.51, 0, 0, 0)
+	tapLockBtn.Text = "Tap Lock: ON"
+	tapLockBtn.Font = Enum.Font.GothamBold
+	tapLockBtn.TextSize = 11
+	tapLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	tapLockBtn.Parent = visRow1
+	styleBox(tapLockBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	tapLockBtn.MouseButton1Click:Connect(function()
+		CONFIG.TapToLock = not CONFIG.TapToLock
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local themeBtn = Instance.new("TextButton")
+	themeBtn.LayoutOrder = 2
+	themeBtn.Size = UDim2.new(1, 0, 0, 32)
+	themeBtn.Text = "Theme: " .. getTheme().name
+	themeBtn.Font = Enum.Font.GothamBold
+	themeBtn.TextSize = 11
+	themeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	themeBtn.Parent = visPage
+	styleBox(themeBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	themeBtn.MouseButton1Click:Connect(function()
+		CONFIG.ThemeIndex = (CONFIG.ThemeIndex % #THEMES) + 1
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	local keybindBtn = Instance.new("TextButton")
+	keybindBtn.LayoutOrder = 3
+	keybindBtn.Size = UDim2.new(1, 0, 0, 32)
+	keybindBtn.Text = "Flight Keybind: [" .. CONFIG.ToggleKey.Name .. "]"
+	keybindBtn.Font = Enum.Font.GothamBold
+	keybindBtn.TextSize = 11
+	keybindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	keybindBtn.Parent = visPage
+	styleBox(keybindBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	keybindBtn.MouseButton1Click:Connect(function()
+		awaitingRebind = true
+		keybindBtn.Text = "Press any key..."
+		keybindBtn.BackgroundColor3 = getTheme().primary
+	end)
+
+	local serverRow = Instance.new("Frame")
+	serverRow.LayoutOrder = 4
+	serverRow.Size = UDim2.new(1, 0, 0, 32)
+	serverRow.BackgroundTransparency = 1
+	serverRow.Parent = visPage
+
+	local rejoinBtn = Instance.new("TextButton")
+	rejoinBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	rejoinBtn.Text = "🔄 Rejoin"
+	rejoinBtn.Font = Enum.Font.GothamBold
+	rejoinBtn.TextSize = 11
+	rejoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	rejoinBtn.Parent = serverRow
+	styleBox(rejoinBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	rejoinBtn.MouseButton1Click:Connect(rejoinCurrentServer)
+
+	local hopBtn = Instance.new("TextButton")
+	hopBtn.Size = UDim2.new(0.49, 0, 1, 0)
+	hopBtn.Position = UDim2.new(0.51, 0, 0, 0)
+	hopBtn.Text = "🌐 Server Hop"
+	hopBtn.Font = Enum.Font.GothamBold
+	hopBtn.TextSize = 11
+	hopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	hopBtn.Parent = serverRow
+	styleBox(hopBtn, Color3.fromRGB(30, 37, 50), 8, 0.85)
+	hopBtn.MouseButton1Click:Connect(hopToFreshServer)
+
+	local resetBtn = Instance.new("TextButton")
+	resetBtn.LayoutOrder = 5
+	resetBtn.Size = UDim2.new(1, 0, 0, 30)
+	resetBtn.Text = "↺ Reset All Settings & UI"
+	resetBtn.Font = Enum.Font.GothamBold
+	resetBtn.TextSize = 11
+	resetBtn.TextColor3 = Color3.fromRGB(226, 232, 240)
+	resetBtn.Parent = visPage
+	styleBox(resetBtn, Color3.fromRGB(51, 35, 42), 8, 0.85)
+	resetBtn.MouseButton1Click:Connect(function()
+		CONFIG.ToggleKey = DEFAULTS.ToggleKey
+		CONFIG.FlySpeed = DEFAULTS.FlySpeed
+		CONFIG.SprintMultiplier = DEFAULTS.SprintMultiplier
+		CONFIG.NoclipWhileFlying = DEFAULTS.NoclipEnabled
+		CONFIG.WalkOnWater = DEFAULTS.WalkOnWaterEnabled
+		CONFIG.AntiKnockback = DEFAULTS.AntiKnockbackEnabled
+		CONFIG.InfiniteAirJump = DEFAULTS.InfiniteAirJumpEnabled
+		CONFIG.AntiAFK = DEFAULTS.AntiAFKEnabled
+		CONFIG.OrbitTarget = DEFAULTS.OrbitTargetEnabled
+		CONFIG.TapToLock = DEFAULTS.TapToLockEnabled
+		CONFIG.AutoAuraEnabled = DEFAULTS.AutoAuraEnabled
+		CONFIG.AutoKenEnabled = DEFAULTS.AutoKenEnabled
+		CONFIG.AutoEscapeEnabled = DEFAULTS.AutoEscapeEnabled
+		CONFIG.ESPEnabled = DEFAULTS.ESPEnabled
+		CONFIG.ComboPresetIndex = DEFAULTS.ComboPresetIndex
+		CONFIG.ThemeIndex = DEFAULTS.ThemeIndex
+		AIM_CONFIG.AimFOVRadius = DEFAULTS.AimFOVRadius
+		AIM_CONFIG.TargetPartName = DEFAULTS.TargetPartName
+		savedLogoPosition = DEFAULTS.LogoPosition
+		savedMenuPosition = DEFAULTS.MenuPosition
+		savedActionBarPosition = DEFAULTS.ActionBarPosition
+		waypoints[1] = nil
+		waypoints[2] = nil
+		lockedTargetPlayer = nil
+		manualPriorityTarget = nil
+		awaitingRebind = false
+
+		setNoclipEnabled(false)
+		saveSessionSettings()
+
+		if logoContainer then
+			logoContainer.Position = savedLogoPosition
+		end
+		if menuFrame then
+			menuFrame.Position = savedMenuPosition
+		end
+		if touchPadFrame then
+			touchPadFrame.Position = savedActionBarPosition
+		end
+		syncAllUI()
+	end)
+
+	refreshMenuUI = function()
+		local t = getTheme()
+
+		for tName, tBtn in pairs(tabButtons) do
+			local active = (CONFIG.ActiveTab == tName)
+			tBtn.BackgroundColor3 = active and t.primary or Color3.fromRGB(24, 28, 37)
+			if pages[tName] then
+				pages[tName].Visible = active
+			end
+		end
+
+		refreshAimFOV()
+		refreshSpeed()
+		refreshSprint()
+		refreshWP1()
+		refreshWP2()
+
+		presetBtn.Text = "Combo Preset: " .. getActiveComboPreset().name
+		targetLockBtn.Text = if manualPriorityTarget
+			then ("Lock: " .. manualPriorityTarget.DisplayName)
+			else "Lock: Auto (FOV)"
+		targetLockBtn.BackgroundColor3 = manualPriorityTarget and t.primary or Color3.fromRGB(24, 28, 37)
+
+		partBtn.Text = if AIM_CONFIG.TargetPartName == "Head" then "Aim: Head" else "Aim: Torso"
+		orbitBtn.Text = CONFIG.OrbitTarget and "Orbit Target: ON" or "Orbit Target: OFF"
+		orbitBtn.BackgroundColor3 = CONFIG.OrbitTarget and t.primary or Color3.fromRGB(30, 37, 50)
+
+		auraBtn.Text = CONFIG.AutoAuraEnabled and "Auto-Aura: ON" or "Auto-Aura: OFF"
+		auraBtn.BackgroundColor3 = CONFIG.AutoAuraEnabled and t.primary or Color3.fromRGB(30, 37, 50)
+
+		autoKenBtn.Text = CONFIG.AutoKenEnabled and "Auto-Ken: ON" or "Auto-Ken: OFF"
+		autoKenBtn.BackgroundColor3 = CONFIG.AutoKenEnabled and t.primary or Color3.fromRGB(30, 37, 50)
+
+		antiKBBtn.Text = CONFIG.AntiKnockback and "Anti-KB: ON" or "Anti-KB: OFF"
+		antiKBBtn.BackgroundColor3 = CONFIG.AntiKnockback and t.primary or Color3.fromRGB(30, 37, 50)
+
+		escapeBtn.Text = CONFIG.AutoEscapeEnabled and "Low-HP Escape: ON" or "Low-HP Escape: OFF"
+		escapeBtn.BackgroundColor3 = CONFIG.AutoEscapeEnabled and t.primary or Color3.fromRGB(30, 37, 50)
+
+		noclipBtn.Text = CONFIG.NoclipWhileFlying and "Noclip: ON" or "Noclip: OFF"
+		noclipBtn.BackgroundColor3 = CONFIG.NoclipWhileFlying and t.primary or Color3.fromRGB(30, 37, 50)
+
+		waterBtn.Text = CONFIG.WalkOnWater and "Water Walk: ON" or "Water Walk: OFF"
+		waterBtn.BackgroundColor3 = CONFIG.WalkOnWater and t.primary or Color3.fromRGB(30, 37, 50)
+
+		infJumpBtn.Text = CONFIG.InfiniteAirJump and "Inf Jump: ON" or "Inf Jump: OFF"
+		infJumpBtn.BackgroundColor3 = CONFIG.InfiniteAirJump and t.primary or Color3.fromRGB(30, 37, 50)
+
+		afkBtn.Text = CONFIG.AntiAFK and "Anti-AFK: ON" or "Anti-AFK: OFF"
+		afkBtn.BackgroundColor3 = CONFIG.AntiAFK and t.primary or Color3.fromRGB(30, 37, 50)
+
+		espBtn.Text = CONFIG.ESPEnabled and "ESP & HP: ON" or "ESP & HP: OFF"
+		espBtn.BackgroundColor3 = CONFIG.ESPEnabled and t.primary or Color3.fromRGB(30, 37, 50)
+
+		tapLockBtn.Text = CONFIG.TapToLock and "Tap Lock: ON" or "Tap Lock: OFF"
+		tapLockBtn.BackgroundColor3 = CONFIG.TapToLock and t.primary or Color3.fromRGB(30, 37, 50)
+
+		themeBtn.Text = "Theme: " .. t.name
+		if not awaitingRebind then
+			keybindBtn.Text = "Flight Keybind: [" .. CONFIG.ToggleKey.Name .. "]"
+			keybindBtn.BackgroundColor3 = Color3.fromRGB(30, 37, 50)
+		end
+	end
+
+	-- Draggable & Collapsible PvP Action Strip
+	local pad = Instance.new("Frame")
+	pad.Name = "CompactPvPActionStrip"
+	pad.Size = UDim2.fromOffset(496, 34)
+	pad.Position = savedActionBarPosition
+	pad.BackgroundTransparency = 1
+	pad.Visible = true
+	pad.Parent = gui
+	touchPadFrame = pad
+
+	local padLayout = Instance.new("UIListLayout")
+	padLayout.FillDirection = Enum.FillDirection.Horizontal
+	padLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	padLayout.Padding = UDim.new(0, 5)
+	padLayout.Parent = pad
+
+	local dragChip = Instance.new("TextButton")
+	dragChip.LayoutOrder = 0
+	dragChip.Size = UDim2.fromOffset(20, 32)
+	dragChip.Text = "⋮⋮"
+	dragChip.Font = Enum.Font.GothamBold
+	dragChip.TextSize = 11
+	dragChip.TextColor3 = Color3.fromRGB(148, 163, 184)
+	dragChip.Parent = pad
+	styleBox(dragChip, Color3.fromRGB(20, 24, 32), 8, 0.82)
+	stripDragHandle = dragChip
+	makeDraggableInteractive(dragChip, pad, {
+		onPositionChanged = function(newPos: UDim2)
+			savedActionBarPosition = newPos
+			saveSessionSettings()
+		end,
+	})
+
+	local comboBtn = Instance.new("TextButton")
+	comboBtn.LayoutOrder = 1
+	comboBtn.Size = UDim2.fromOffset(78, 32)
+	comboBtn.Text = "⚡ COMBO"
+	comboBtn.Font = Enum.Font.GothamBold
+	comboBtn.TextSize = 11
+	comboBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	comboBtn.Parent = pad
+	styleBox(comboBtn, Color3.fromRGB(24, 27, 34), 8, 0.82)
+	comboChipBtn = comboBtn
+	comboBtn.MouseButton1Click:Connect(runPvPCombo)
+
+	local aimBtn = Instance.new("TextButton")
+	aimBtn.LayoutOrder = 2
+	aimBtn.Size = UDim2.fromOffset(72, 32)
+	aimBtn.Text = "🎯 AIM"
+	aimBtn.Font = Enum.Font.GothamBold
+	aimBtn.TextSize = 11
+	aimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	aimBtn.Parent = pad
+	styleBox(aimBtn, Color3.fromRGB(24, 27, 34), 8, 0.82)
+	aimChipBtn = aimBtn
+	aimBtn.MouseButton1Click:Connect(toggleAimbot)
+
+	local kenBtn = Instance.new("TextButton")
+	kenBtn.LayoutOrder = 3
+	kenBtn.Size = UDim2.fromOffset(54, 32)
+	kenBtn.Text = "👁 KEN"
+	kenBtn.Font = Enum.Font.GothamBold
+	kenBtn.TextSize = 11
+	kenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	kenBtn.Parent = pad
+	styleBox(kenBtn, Color3.fromRGB(24, 27, 34), 8, 0.82)
+	kenChipBtn = kenBtn
+	kenBtn.MouseButton1Click:Connect(toggleInstinctKen)
+
+	local raceBtn = Instance.new("TextButton")
+	raceBtn.LayoutOrder = 4
+	raceBtn.Size = UDim2.fromOffset(62, 32)
+	raceBtn.Text = "🔥 V3/V4"
+	raceBtn.Font = Enum.Font.GothamBold
+	raceBtn.TextSize = 11
+	raceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	raceBtn.Parent = pad
+	styleBox(raceBtn, Color3.fromRGB(24, 27, 34), 8, 0.82)
+	raceChipBtn = raceBtn
+	raceBtn.MouseButton1Click:Connect(triggerRaceV3V4)
+
+	local dashChip = Instance.new("TextButton")
+	dashChip.LayoutOrder = 5
+	dashChip.Size = UDim2.fromOffset(66, 32)
+	dashChip.Text = "⚡ DASH"
+	dashChip.Font = Enum.Font.GothamBold
+	dashChip.TextSize = 11
+	dashChip.TextColor3 = Color3.fromRGB(255, 255, 255)
+	dashChip.Visible = false
+	dashChip.Parent = pad
+	styleBox(dashChip, getTheme().primary, 8, 0.82)
+	dashChipBtn = dashChip
+	dashChip.MouseButton1Click:Connect(triggerAirDash)
+
+	local spChip = Instance.new("TextButton")
+	spChip.LayoutOrder = 6
+	spChip.Size = UDim2.fromOffset(72, 32)
+	spChip.Text = "SPRINT"
+	spChip.Font = Enum.Font.GothamBold
+	spChip.TextSize = 11
+	spChip.TextColor3 = Color3.fromRGB(255, 255, 255)
+	spChip.Visible = false
+	spChip.Parent = pad
+	styleBox(spChip, Color3.fromRGB(24, 27, 34), 8, 0.82)
+	sprintChipBtn = spChip
+	spChip.MouseButton1Click:Connect(function()
+		touchSprinting = not touchSprinting
+		syncAllUI()
+	end)
+
+	local collapseBtn = Instance.new("TextButton")
+	collapseBtn.LayoutOrder = 7
+	collapseBtn.Size = UDim2.fromOffset(28, 32)
+	collapseBtn.Text = "▶"
+	collapseBtn.Font = Enum.Font.GothamBold
+	collapseBtn.TextSize = 11
+	collapseBtn.TextColor3 = Color3.fromRGB(226, 232, 240)
+	collapseBtn.Parent = pad
+	styleBox(collapseBtn, Color3.fromRGB(39, 46, 61), 8, 0.82)
+	collapseStripBtn = collapseBtn
+	collapseBtn.MouseButton1Click:Connect(function()
+		CONFIG.ActionBarExpanded = not CONFIG.ActionBarExpanded
+		saveSessionSettings()
+		syncAllUI()
+	end)
+
+	watchCameraViewport()
+	syncAllUI()
+end
+
+-- Anti-AFK Keep-Alive
+player.Idled:Connect(function()
+	if not CONFIG.AntiAFK then
+		return
+	end
+	pcall(function()
+		VirtualUser:CaptureController()
+		VirtualUser:ClickButton2(Vector2.zero)
+	end)
+end)
+
+-- Infinite Air Jump (Geppo) Listener
+UserInputService.JumpRequest:Connect(function()
+	if not CONFIG.InfiniteAirJump or flying then
+		return
+	end
+	local hum = select(1, getCharacterParts(player.Character))
+	if hum and hum.Health > 0 then
+		hum:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+-- Tap-on-Player to Lock (movement-gated so camera drags never trigger it) & Keyboard Controls
+local tapCandidateInput: InputObject? = nil
+local tapCandidateStartPos = Vector2.zero
+local tapCandidateMoved = false
+
+UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+	if awaitingRebind and input.UserInputType == Enum.UserInputType.Keyboard then
+		if input.KeyCode ~= Enum.KeyCode.Unknown then
+			CONFIG.ToggleKey = input.KeyCode
+			saveSessionSettings()
+		end
+		awaitingRebind = false
+		syncAllUI()
+		return
+	end
+
+	if gameProcessed then
+		return
+	end
+
+	if CONFIG.TapToLock and tapCandidateInput == nil and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
+		tapCandidateInput = input
+		tapCandidateStartPos = Vector2.new(input.Position.X, input.Position.Y)
+		tapCandidateMoved = false
+	end
+
+	if input.KeyCode == CONFIG.ToggleKey then
+		toggleFlight()
+	elseif input.KeyCode == CONFIG.DashKey then
+		triggerAirDash()
+	elseif input.KeyCode == AIM_CONFIG.ToggleKey then
+		toggleAimbot()
+	elseif input.KeyCode == DEFAULTS.ComboKey then
+		runPvPCombo()
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input: InputObject)
+	if input == tapCandidateInput then
+		local delta = Vector2.new(input.Position.X, input.Position.Y) - tapCandidateStartPos
+		if delta.Magnitude > CONFIG.DragThresholdPixels then
+			tapCandidateMoved = true
+		end
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input: InputObject)
+	if input == tapCandidateInput then
+		local wasCleanTap = not tapCandidateMoved
+		tapCandidateInput = nil
+		tapCandidateMoved = false
+
+		if wasCleanTap and CONFIG.TapToLock then
+			local cam = getActiveCamera()
+			if cam then
+				local ray = cam:ScreenPointToRay(input.Position.X, input.Position.Y)
+				if player.Character then
+					tapLockRayParams.FilterDescendantsInstances = { player.Character }
+				end
+				local hit = workspace:Raycast(ray.Origin, ray.Direction * 1000, tapLockRayParams)
+				if hit and hit.Instance then
+					local hitModel = hit.Instance:FindFirstAncestorOfClass("Model")
+					local hitPlayer = hitModel and Players:GetPlayerFromCharacter(hitModel)
+					if hitPlayer and hitPlayer ~= player then
+						local isEnemy = not (AIM_CONFIG.TeamCheck and player.Team ~= nil and hitPlayer.Team == player.Team)
+						if isEnemy then
+							manualPriorityTarget = hitPlayer
+							syncAllUI()
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- Watch camera replacements & player leaves
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	baseFOV = nil
+	watchCameraViewport()
+	clampAllDraggableUI()
+end)
+
+Players.PlayerRemoving:Connect(function(leavingPlayer: Player)
+	clearPlayerESP(leavingPlayer)
+	if manualPriorityTarget == leavingPlayer then
+		manualPriorityTarget = nil
+	end
+	if lockedTargetPlayer == leavingPlayer then
+		lockedTargetPlayer = nil
+	end
+end)
+
+-- Character lifecycle & Auto-Aura on respawn
+player.CharacterRemoving:Connect(function()
+	comboRunning = false
+	stopFlight()
+end)
+
+player.CharacterAdded:Connect(function(character)
+	comboRunning = false
+	escapeTriggered = false
+	stopFlight()
+
+	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
+	if humanoid then
+		humanoid.Died:Connect(function()
+			comboRunning = false
+			stopFlight()
+		end)
+	end
+
+	if CONFIG.AutoAuraEnabled then
+		task.delay(0.8, activateBusoAura)
+	end
+end)
+
+if player.Character then
+	local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.Died:Connect(function()
+			comboRunning = false
+			stopFlight()
+		end)
+	end
+	if CONFIG.AutoAuraEnabled then
+		task.delay(0.5, activateBusoAura)
+	end
+end
+
+buildCustomMenuUI()
+startPassiveSurvivabilityLoop()
+bindUnifiedCameraLoop()
